@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Plugins;
 using Nop.Services.Authentication.External;
@@ -66,6 +67,27 @@ namespace Nop.Plugin.ExternalAuth.Facebook
         }
 
         /// <summary>
+        /// Install the plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.SaveSetting(new FacebookExternalAuthSettings());
+            });
+
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientKeyIdentifier", "App ID/API Key");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientKeyIdentifier.Hint", "Enter your app ID/API key here. You can find it on your FaceBook application page.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientSecret", "App Secret");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientSecret.Hint", "Enter your app secret here. You can find it on your FaceBook application page.");
+
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall the plugin
         /// </summary>
         public override void Uninstall()
@@ -80,6 +102,27 @@ namespace Nop.Plugin.ExternalAuth.Facebook
             this.DeletePluginLocaleResource("Plugins.ExternalAuth.Facebook.ClientSecret.Hint");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall the plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.DeleteSetting<FacebookExternalAuthSettings>();
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientKeyIdentifier");
+            await this.DeletePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientKeyIdentifier.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientSecret");
+            await this.DeletePluginLocaleResourceAsync("Plugins.ExternalAuth.Facebook.ClientSecret.Hint");
+
+            await base.UninstallAsync();
         }
 
         #endregion

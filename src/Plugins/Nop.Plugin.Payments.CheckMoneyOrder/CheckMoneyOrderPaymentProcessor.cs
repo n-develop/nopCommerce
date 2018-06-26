@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nop.Core;
 using Nop.Core.Domain.Orders;
@@ -220,6 +221,32 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
         }
 
         /// <summary>
+        /// Install the plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //settings
+            var settings = new CheckMoneyOrderPaymentSettings
+            {
+                DescriptionText = "<p>Mail Personal or Business Check, Cashier's Check or money order to:</p><p><br /><b>NOP SOLUTIONS</b> <br /><b>your address here,</b> <br /><b>New York, NY 10001 </b> <br /><b>USA</b></p><p>Notice that if you pay by Personal or Business Check, your order may be held for up to 10 days after we receive your check to allow enough time for the check to clear.  If you want us to ship faster upon receipt of your payment, then we recommend your send a money order or Cashier's check.</p><p>P.S. You can edit this text from admin panel.</p>"
+            };
+            _settingService.SaveSetting(settings);
+
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFee", "Additional fee");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFee.Hint", "The additional fee.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFeePercentage", "Additional fee. Use percentage");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFeePercentage.Hint", "Determines whether to apply a percentage additional fee to the order total. If not enabled, a fixed value is used.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.DescriptionText", "Description");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.DescriptionText.Hint", "Enter info that will be shown to customers during checkout");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.PaymentMethodDescription", "Pay by cheque or money order");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.ShippableProductRequired", "Shippable product required");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.ShippableProductRequired.Hint", "An option indicating whether shippable products are required in order to display this payment method during checkout.");
+
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall the plugin
         /// </summary>
         public override void Uninstall()
@@ -239,6 +266,28 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
             this.DeletePluginLocaleResource("Plugins.Payment.CheckMoneyOrder.ShippableProductRequired.Hint");
             
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall the plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //settings
+            _settingService.DeleteSetting<CheckMoneyOrderPaymentSettings>();
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFee");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFee.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFeePercentage");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.AdditionalFeePercentage.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.DescriptionText");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.DescriptionText.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.PaymentMethodDescription");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.ShippableProductRequired");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payment.CheckMoneyOrder.ShippableProductRequired.Hint");
+            
+            await base.UninstallAsync();
         }
 
         #endregion

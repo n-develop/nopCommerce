@@ -682,6 +682,99 @@ namespace Nop.Plugin.Payments.Square
         }
 
         /// <summary>
+        /// Install the plugin
+        /// </summary>
+        public override async System.Threading.Tasks.Task InstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await System.Threading.Tasks.Task.Run(() =>
+            {
+                //settings
+                _settingService.SaveSetting(new SquarePaymentSettings
+                {
+                    LocationId = "0",
+                    TransactionMode = TransactionMode.Charge,
+                    UseSandbox = true
+                });
+
+                //install renew access token schedule task
+                if (_scheduleTaskService.GetTaskByType(SquarePaymentDefaults.RenewAccessTokenTask) == null)
+                {
+                    _scheduleTaskService.InsertTask(new ScheduleTask
+                    {
+                        Enabled = true,
+                        Seconds = SquarePaymentDefaults.AccessTokenRenewalPeriodRecommended * 24 * 60 * 60,
+                        Name = SquarePaymentDefaults.RenewAccessTokenTaskName,
+                        Type = SquarePaymentDefaults.RenewAccessTokenTask,
+                    });
+                }
+            });
+
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Enums.Nop.Plugin.Payments.Square.Domain.TransactionMode.Authorize", "Authorize only");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Enums.Nop.Plugin.Payments.Square.Domain.TransactionMode.Charge", "Charge (authorize and capture)");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.AccessTokenRenewalPeriod.Error", "Token renewal limit to {0} days max, but it is recommended that you specify {1} days for the period");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AccessToken", "Access token");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AccessToken.Hint", "Get the automatically renewed OAuth access token by pressing button 'Obtain access token'.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFee", "Additional fee");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFee.Hint", "Enter additional fee to charge your customers.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFeePercentage", "Additional fee. Use percentage");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFeePercentage.Hint", "Determines whether to apply a percentage additional fee to the order total. If not enabled, a fixed value is used.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationId", "Application ID");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationId.Hint", "Enter your application ID, available from the application dashboard.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationSecret", "Application secret");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationSecret.Hint", "Enter your application secret, available from the application dashboard.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.CardNonce.Key", "Pay using card nonce");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.Location", "Business location");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.Location.Hint", "Choose your business location. Location is a required parameter for payment requests.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.Location.NotExist", "No locations");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.PostalCode", "Postal code");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.PostalCode.Key", "Postal code");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxAccessToken", "Sandbox access token");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxAccessToken.Hint", "Enter your sandbox access token, available from the application dashboard.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxApplicationId", "Sandbox application ID");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxApplicationId.Hint", "Enter your sandbox application ID, available from the application dashboard.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SaveCard", "Save the card data for future purchasing");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SaveCard.Key", "Save card details");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard", "Use a previously saved card");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard.Key", "Pay using stored card token");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard.Mask", "*{0}");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard.SelectCard", "Select a card");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.TransactionMode", "Transaction mode");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.TransactionMode.Hint", "Choose the transaction mode.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.UseSandbox", "Use sandbox");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.UseSandbox.Hint", "Determine whether to use sandbox credentials.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.Instructions", @"
+                <p>
+                    For plugin configuration follow these steps:<br />
+                    <br />
+                    1. You will need a Square Merchant account. If you don't already have one, you can sign up here: <a href=""http://squ.re/nopcommerce"" target=""_blank"">https://squareup.com/signup/</a><br />
+                    <em>Important: Your merchant account must have at least one location with enabled credit card processing. Please refer to the Square customer support if you have any questions about how to set this up.</em><br />
+                    2. Sign in to your Square Developer Portal at <a href=""http://squ.re/nopcommerce1"" target=""_blank"">https://connect.squareup.com/apps</a>; use the same sign in credentials as your merchant account.<br />
+                    3. Click on '+New Application' and fill in the Application Name. This name is for you to recognize the application in the developer portal and is not used by the extension. Click 'Create Application' at the bottom of the page.<br />
+                    4. In the Square Developer admin go to 'Credentials' tab. Copy the Application ID and paste it into Application ID below.<br />
+                    5. In the Square Developer admin go to 'OAuth' tab. Click 'Show Secret'. Copy the Application Secret and paste it into Application Secret below. Click 'Save' on this page.<br />
+                    6. Copy this URL: <em>{0}</em>. Go to the Square Developer admin, go to 'OAuth' tab, and paste this URL into Redirect URL. Click 'Save'.<br />
+                    7. On this page click 'Obtain access token' below; the Access token field should populate. Click 'Save' below.<br />
+                    8. Choose the business location. Location is a required parameter for payment requests.<br />
+                    9. Fill in the remaining fields and save to complete the configuration.<br />
+                    <br />
+                    <em>Note: The payment form must be generated only on a webpage that uses HTTPS.</em><br />
+                </p>");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.ObtainAccessToken", "Obtain access token");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.ObtainAccessToken.Error", "An error occurred while obtaining an access token");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.ObtainAccessToken.Success", "The access token was successfully obtained");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.PaymentMethodDescription", "Pay by credit card using Square");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.RenewAccessToken.Error", "Square payment error. An error occurred while renewing an access token");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.RenewAccessToken.Success", "Square payment info. The access token was successfully renewed");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.RevokeAccessTokens", "Revoke access tokens");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.RevokeAccessTokens.Error", "An error occurred while revoking access tokens");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Square.RevokeAccessTokens.Success", "All access tokens were successfully revoked");
+             
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall the plugin
         /// </summary>
         public override void Uninstall()
@@ -740,6 +833,71 @@ namespace Nop.Plugin.Payments.Square
             this.DeletePluginLocaleResource("Plugins.Payments.Square.RevokeAccessTokens.Success");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall the plugin
+        /// </summary>
+        public override async System.Threading.Tasks.Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await System.Threading.Tasks.Task.Run(() =>
+            {
+                //settings
+                _settingService.DeleteSetting<SquarePaymentSettings>();
+
+                //remove scheduled task
+                var task = _scheduleTaskService.GetTaskByType(SquarePaymentDefaults.RenewAccessTokenTask);
+                if (task != null)
+                    _scheduleTaskService.DeleteTask(task);
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Enums.Nop.Plugin.Payments.Square.Domain.TransactionMode.Authorize");
+            await this.DeletePluginLocaleResourceAsync("Enums.Nop.Plugin.Payments.Square.Domain.TransactionMode.Charge");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.AccessTokenRenewalPeriod.Error");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AccessToken");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AccessToken.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFee");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFee.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFeePercentage");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.AdditionalFeePercentage.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationId");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationId.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationSecret");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.ApplicationSecret.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.CardNonce.Key");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.Location");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.Location.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.Location.NotExist");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.PostalCode");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.PostalCode.Key");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxAccessToken");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxAccessToken.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxApplicationId");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SandboxApplicationId.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SaveCard");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.SaveCard.Key");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard.Key");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard.Mask");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.StoredCard.SelectCard");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.TransactionMode");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.TransactionMode.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.UseSandbox");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Fields.UseSandbox.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.Instructions");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.ObtainAccessToken");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.ObtainAccessToken.Error");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.ObtainAccessToken.Success");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.PaymentMethodDescription");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.RenewAccessToken.Error");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.RenewAccessToken.Success");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.RevokeAccessTokens");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.RevokeAccessTokens.Error");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Square.RevokeAccessTokens.Success");
+             
+            await base.UninstallAsync();
         }
 
         #endregion

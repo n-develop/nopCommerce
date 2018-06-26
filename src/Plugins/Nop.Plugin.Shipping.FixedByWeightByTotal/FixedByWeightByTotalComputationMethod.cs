@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Domain.Shipping;
 using Nop.Core.Plugins;
@@ -285,6 +286,63 @@ namespace Nop.Plugin.Shipping.FixedByWeightByTotal
         }
 
         /// <summary>
+        /// Install plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.SaveSetting(new FixedByWeightByTotalSettings());
+
+                //database objects
+                _objectContext.Install();
+            });
+
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.AddRecord", "Add record");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.AdditionalFixedCost", "Additional fixed cost");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.AdditionalFixedCost.Hint", "Specify an additional fixed cost per shopping cart for this option. Set to 0 if you don't want an additional fixed cost to be applied.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Country", "Country");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Country.Hint", "If an asterisk is selected, then this shipping rate will apply to all customers, regardless of the country.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.DataHtml", "Data");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LimitMethodsToCreated", "Limit shipping methods to configured ones");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LimitMethodsToCreated.Hint", "If you check this option, then your customers will be limited to shipping options configured here. Otherwise, they'll be able to choose any existing shipping options even they are not configured here (zero shipping fee in this case).");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LowerWeightLimit", "Lower weight limit");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LowerWeightLimit.Hint", "Lower weight limit. This field can be used for \"per extra weight unit\" scenarios.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalFrom", "Order subtotal from");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalFrom.Hint", "Order subtotal from.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalTo", "Order subtotal to");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalTo.Hint", "Order subtotal to.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.PercentageRateOfSubtotal", "Charge percentage (of subtotal)");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.PercentageRateOfSubtotal.Hint", "Charge percentage (of subtotal).");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Rate", "Rate");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.RatePerWeightUnit", "Rate per weight unit");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.RatePerWeightUnit.Hint", "Rate per weight unit.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.ShippingMethod", "Shipping method");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.ShippingMethod.Hint", "Choose shipping method.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.StateProvince", "State / province");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.StateProvince.Hint", "If an asterisk is selected, then this shipping rate will apply to all customers from the given country, regardless of the state.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Store", "Store");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Store.Hint", "If an asterisk is selected, then this shipping rate will apply to all stores.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Warehouse", "Warehouse");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Warehouse.Hint", "If an asterisk is selected, then this shipping rate will apply to all warehouses.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightFrom", "Order weight from");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightFrom.Hint", "Order weight from.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightTo", "Order weight to");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightTo.Hint", "Order weight to.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Zip", "Zip");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Zip.Hint", "Zip / postal code. If zip is empty, then this shipping rate will apply to all customers from the given country or state, regardless of the zip code.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fixed", "Fixed Rate");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Formula", "Formula to calculate rates");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Formula.Value", "[additional fixed cost] + ([order total weight] - [lower weight limit]) * [rate per weight unit] + [order subtotal] * [charge percentage]");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.ShippingByWeight", "By Weight");
+             
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall plugin
         /// </summary>
         public override void Uninstall()
@@ -342,6 +400,70 @@ namespace Nop.Plugin.Shipping.FixedByWeightByTotal
             this.DeletePluginLocaleResource("Plugins.Shipping.FixedByWeightByTotal.ShippingByWeight");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.DeleteSetting<FixedByWeightByTotalSettings>();
+
+                //fixed rates
+                var fixedRates = _shippingService.GetAllShippingMethods()
+                    .Select(shippingMethod => _settingService.GetSetting(
+                        string.Format(FixedByWeightByTotalDefaults.FixedRateSettingsKey, shippingMethod.Id)))
+                    .Where(setting => setting != null).ToList();
+                _settingService.DeleteSettings(fixedRates);
+
+                //database objects
+                _objectContext.Uninstall();
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.AddRecord");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.AdditionalFixedCost");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.AdditionalFixedCost.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Country");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Country.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.DataHtml");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LimitMethodsToCreated");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LimitMethodsToCreated.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LowerWeightLimit");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.LowerWeightLimit.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalFrom");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalFrom.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalTo");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.OrderSubtotalTo.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.PercentageRateOfSubtotal");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.PercentageRateOfSubtotal.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Rate");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.RatePerWeightUnit");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.RatePerWeightUnit.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.ShippingMethod");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.ShippingMethod.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.StateProvince");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.StateProvince.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Store");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Store.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Warehouse");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Warehouse.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightFrom");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightFrom.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightTo");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.WeightTo.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Zip");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fields.Zip.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Fixed");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Formula");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.Formula.Value");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.FixedByWeightByTotal.ShippingByWeight");
+             
+            await base.UninstallAsync();
         }
 
         #endregion

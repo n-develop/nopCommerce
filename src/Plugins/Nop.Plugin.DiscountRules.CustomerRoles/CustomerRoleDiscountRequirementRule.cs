@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -92,6 +93,19 @@ namespace Nop.Plugin.DiscountRules.CustomerRoles
         }
 
         /// <summary>
+        /// Install the plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.DiscountRules.CustomerRoles.Fields.CustomerRole", "Required customer role");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.DiscountRules.CustomerRoles.Fields.CustomerRole.Hint", "Discount will be applied if customer is in the selected customer role.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.DiscountRules.CustomerRoles.Fields.CustomerRole.Select", "Select customer role");
+             
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall the plugin
         /// </summary>
         public override void Uninstall()
@@ -110,6 +124,32 @@ namespace Nop.Plugin.DiscountRules.CustomerRoles
             this.DeletePluginLocaleResource("Plugins.DiscountRules.CustomerRoles.Fields.CustomerRole.Select");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall the plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //discount requirements
+                var discountRequirements = _discountService.GetAllDiscountRequirements()
+                    .Where(discountRequirement => discountRequirement.DiscountRequirementRuleSystemName ==
+                                                  DiscountRequirementDefaults.SystemName);
+                foreach (var discountRequirement in discountRequirements)
+                {
+                    _discountService.DeleteDiscountRequirement(discountRequirement);
+                }
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.DiscountRules.CustomerRoles.Fields.CustomerRole");
+            await this.DeletePluginLocaleResourceAsync("Plugins.DiscountRules.CustomerRoles.Fields.CustomerRole.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.DiscountRules.CustomerRoles.Fields.CustomerRole.Select");
+             
+            await base.UninstallAsync();
         }
 
         #endregion

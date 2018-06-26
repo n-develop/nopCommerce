@@ -1,4 +1,6 @@
-﻿namespace Nop.Core.Plugins
+﻿using System.Threading.Tasks;
+
+namespace Nop.Core.Plugins
 {
     /// <summary>
     /// Interface denoting plug-in attributes that are displayed throughout 
@@ -25,5 +27,15 @@
         /// Uninstall plugin
         /// </summary>
         void Uninstall();
+
+        /// <summary>
+        /// Install plugin
+        /// </summary>
+        Task InstallAsync();
+
+        /// <summary>
+        /// Uninstall plugin
+        /// </summary>
+        Task UninstallAsync();
     }
 }

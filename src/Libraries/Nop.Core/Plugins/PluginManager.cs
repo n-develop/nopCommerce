@@ -4,9 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Loader;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Newtonsoft.Json;
 using Nop.Core.ComponentModel;
@@ -134,6 +134,50 @@ namespace Nop.Core.Plugins
         }
 
         /// <summary>
+        /// Get system names of installed plugins
+        /// </summary>
+        /// <param name="filePath">Path to the file</param>
+        /// <returns>List of plugin system names</returns>
+        private static async Task<IList<string>> GetInstalledPluginNamesAsync(string filePath)
+        {
+            //check whether file exists
+            if (!_fileProvider.FileExists(filePath))
+            {
+                //if not, try to parse the file that was used in previous nopCommerce versions
+                filePath = _fileProvider.MapPath(NopPluginDefaults.ObsoleteInstalledPluginsFilePath);
+                if (!_fileProvider.FileExists(filePath))
+                    return new List<string>();
+
+                //get plugin system names from the old txt file
+                var pluginSystemNames = new List<string>();
+                using (var reader = new StringReader(await _fileProvider.ReadAllTextAsync(filePath, Encoding.UTF8)))
+                {
+                    string pluginName;
+                    while ((pluginName = reader.ReadLine()) != null)
+                    {
+                        if (!string.IsNullOrWhiteSpace(pluginName))
+                            pluginSystemNames.Add(pluginName.Trim());
+                    }
+                }
+
+                //save system names of installed plugins to the new file
+                await SaveInstalledPluginNamesAsync(pluginSystemNames, _fileProvider.MapPath(NopPluginDefaults.InstalledPluginsFilePath));
+
+                //and delete the old one
+                _fileProvider.DeleteFile(filePath);
+
+                return pluginSystemNames;
+            }
+
+            var text = await _fileProvider.ReadAllTextAsync(filePath, Encoding.UTF8);
+            if (string.IsNullOrEmpty(text))
+                return new List<string>();
+
+            //get plugin system names from the JSON file
+            return JsonConvert.DeserializeObject<IList<string>>(text);
+        }
+
+        /// <summary>
         /// Save system names of installed plugins to the file
         /// </summary>
         /// <param name="pluginSystemNames">List of plugin system names</param>
@@ -143,6 +187,18 @@ namespace Nop.Core.Plugins
             //save the file
             var text = JsonConvert.SerializeObject(pluginSystemNames, Formatting.Indented);
             _fileProvider.WriteAllText(filePath, text, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Save system names of installed plugins to the file
+        /// </summary>
+        /// <param name="pluginSystemNames">List of plugin system names</param>
+        /// <param name="filePath">Path to the file</param>
+        private static async Task SaveInstalledPluginNamesAsync(IList<string> pluginSystemNames, string filePath)
+        {
+            //save the file
+            var text = JsonConvert.SerializeObject(pluginSystemNames, Formatting.Indented);
+            await _fileProvider.WriteAllTextAsync(filePath, text, Encoding.UTF8);
         }
 
         /// <summary>
@@ -558,6 +614,32 @@ namespace Nop.Core.Plugins
         }
 
         /// <summary>
+        /// Mark plugin as installed
+        /// </summary>
+        /// <param name="systemName">Plugin system name</param>
+        public static async Task MarkPluginAsInstalledAsync(string systemName)
+        {
+            if (string.IsNullOrEmpty(systemName))
+                throw new ArgumentNullException(nameof(systemName));
+
+            var filePath = _fileProvider.MapPath(NopPluginDefaults.InstalledPluginsFilePath);
+
+            //create file if not exists
+            _fileProvider.CreateFile(filePath);
+
+            //get installed plugin names
+            var installedPluginSystemNames = await GetInstalledPluginNamesAsync(filePath);
+
+            //add plugin system name to the list if doesn't already exist
+            var alreadyMarkedAsInstalled = installedPluginSystemNames.Any(pluginName => pluginName.Equals(systemName, StringComparison.InvariantCultureIgnoreCase));
+            if (!alreadyMarkedAsInstalled)
+                installedPluginSystemNames.Add(systemName);
+
+            //save installed plugin names to the file
+            await SaveInstalledPluginNamesAsync(installedPluginSystemNames, filePath);
+        }
+
+        /// <summary>
         /// Mark plugin as uninstalled
         /// </summary>
         /// <param name="systemName">Plugin system name</param>
@@ -581,6 +663,32 @@ namespace Nop.Core.Plugins
 
             //save installed plugin names to the file
             SaveInstalledPluginNames(installedPluginSystemNames, filePath);
+        }
+
+        /// <summary>
+        /// Mark plugin as uninstalled
+        /// </summary>
+        /// <param name="systemName">Plugin system name</param>
+        public static async Task MarkPluginAsUninstalledAsync(string systemName)
+        {
+            if (string.IsNullOrEmpty(systemName))
+                throw new ArgumentNullException(nameof(systemName));
+
+            var filePath = _fileProvider.MapPath(NopPluginDefaults.InstalledPluginsFilePath);
+
+            //create file if not exists
+            _fileProvider.CreateFile(filePath);
+
+            //get installed plugin names
+            var installedPluginSystemNames = await GetInstalledPluginNamesAsync(filePath);
+
+            //remove plugin system name from the list if exists
+            var alreadyMarkedAsInstalled = installedPluginSystemNames.Any(pluginName => pluginName.Equals(systemName, StringComparison.InvariantCultureIgnoreCase));
+            if (alreadyMarkedAsInstalled)
+                installedPluginSystemNames.Remove(systemName);
+
+            //save installed plugin names to the file
+            await SaveInstalledPluginNamesAsync(installedPluginSystemNames, filePath);
         }
 
         /// <summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Threading.Tasks;
 using System.Xml;
 using Nop.Core;
 using Nop.Core.Plugins;
@@ -125,6 +126,17 @@ namespace Nop.Plugin.ExchangeRate.EcbExchange
         }
 
         /// <summary>
+        /// Install the plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.ExchangeRate.EcbExchange.Error", "You can use ECB (European central bank) exchange rate provider only when the primary exchange rate currency is supported by ECB");
+
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall the plugin
         /// </summary>
         public override void Uninstall()
@@ -133,6 +145,17 @@ namespace Nop.Plugin.ExchangeRate.EcbExchange
             this.DeletePluginLocaleResource("Plugins.ExchangeRate.EcbExchange.Error");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall the plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.ExchangeRate.EcbExchange.Error");
+
+            await base.UninstallAsync();
         }
 
         #endregion

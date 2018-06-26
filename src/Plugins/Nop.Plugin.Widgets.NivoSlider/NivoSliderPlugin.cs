@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Infrastructure;
 using Nop.Core.Plugins;
@@ -98,6 +99,55 @@ namespace Nop.Plugin.Widgets.NivoSlider
         }
 
         /// <summary>
+        /// Install plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //pictures
+                var sampleImagesPath =
+                    _fileProvider.MapPath("~/Plugins/Widgets.NivoSlider/Content/nivoslider/sample-images/");
+
+                //settings
+                var settings = new NivoSliderSettings
+                {
+                    Picture1Id =
+                        _pictureService.InsertPicture(_fileProvider.ReadAllBytes(sampleImagesPath + "banner1.jpg"),
+                            MimeTypes.ImagePJpeg, "banner_1").Id,
+                    Text1 = "",
+                    Link1 = _webHelper.GetStoreLocation(false),
+                    Picture2Id =
+                        _pictureService.InsertPicture(_fileProvider.ReadAllBytes(sampleImagesPath + "banner2.jpg"),
+                            MimeTypes.ImagePJpeg, "banner_2").Id,
+                    Text2 = "",
+                    Link2 = _webHelper.GetStoreLocation(false)
+                    //Picture3Id = _pictureService.InsertPicture(File.ReadAllBytes(sampleImagesPath + "banner3.jpg"), MimeTypes.ImagePJpeg, "banner_3").Id,
+                    //Text3 = "",
+                    //Link3 = _webHelper.GetStoreLocation(false),
+                };
+                _settingService.SaveSetting(settings);
+            });
+
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture1", "Picture 1");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture2", "Picture 2");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture3", "Picture 3");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture4", "Picture 4");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture5", "Picture 5");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture", "Picture");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture.Hint", "Upload picture.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Text", "Comment");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Text.Hint", "Enter comment for picture. Leave empty if you don't want to display any text.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Link", "URL");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Link.Hint", "Enter URL. Leave empty if you don't want this picture to be clickable.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.AltText", "Image alternate text");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.AltText.Hint", "Enter alternate text that will be added to image.");
+             
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall plugin
         /// </summary>
         public override void Uninstall()
@@ -121,6 +171,36 @@ namespace Nop.Plugin.Widgets.NivoSlider
             this.DeletePluginLocaleResource("Plugins.Widgets.NivoSlider.AltText.Hint");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.DeleteSetting<NivoSliderSettings>();
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture1");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture2");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture3");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture4");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture5");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Picture.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Text");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Text.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Link");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.Link.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.AltText");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Widgets.NivoSlider.AltText.Hint");
+             
+            await base.UninstallAsync();
         }
     }
 }

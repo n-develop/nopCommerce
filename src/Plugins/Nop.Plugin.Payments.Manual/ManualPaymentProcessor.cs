@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nop.Core;
 using Nop.Core.Domain.Orders;
@@ -283,6 +284,35 @@ namespace Nop.Plugin.Payments.Manual
         }
 
         /// <summary>
+        /// Install the plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                var settings = new ManualPaymentSettings
+                {
+                    TransactMode = TransactMode.Pending
+                };
+                _settingService.SaveSetting(settings);
+            });
+
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.Instructions", "This payment method stores credit card information in database (it's not sent to any third-party processor). In order to store credit card information, you must be PCI compliant.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFee", "Additional fee");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFee.Hint", "Enter additional fee to charge your customers.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFeePercentage", "Additional fee. Use percentage");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFeePercentage.Hint", "Determines whether to apply a percentage additional fee to the order total. If not enabled, a fixed value is used.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.TransactMode", "After checkout mark payment as");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.TransactMode.Hint", "Specify transaction mode.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Payments.Manual.PaymentMethodDescription", "Pay by credit / debit card");
+             
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall the plugin
         /// </summary>
         public override void Uninstall()
@@ -301,6 +331,31 @@ namespace Nop.Plugin.Payments.Manual
             this.DeletePluginLocaleResource("Plugins.Payments.Manual.PaymentMethodDescription");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall the plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.DeleteSetting<ManualPaymentSettings>();
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.Instructions");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFee");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFee.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFeePercentage");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.AdditionalFeePercentage.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.TransactMode");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.Fields.TransactMode.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Payments.Manual.PaymentMethodDescription");
+             
+            await base.UninstallAsync();
         }
 
         #endregion

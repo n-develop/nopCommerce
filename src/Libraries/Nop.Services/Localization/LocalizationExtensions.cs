@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Configuration;
 using Nop.Core.Domain.Localization;
@@ -345,6 +346,20 @@ namespace Nop.Services.Localization
         /// Delete a locale resource
         /// </summary>
         /// <param name="plugin">Plugin</param>
+        /// <param name="resourceName">Resource name</param>
+        public static async Task DeletePluginLocaleResourceAsync(this BasePlugin plugin,
+            string resourceName)
+        {
+            var localizationService = EngineContext.Current.Resolve<ILocalizationService>();
+            var languageService = EngineContext.Current.Resolve<ILanguageService>();
+            await DeletePluginLocaleResourceAsync(plugin, localizationService,
+                languageService, resourceName);
+        }
+
+        /// <summary>
+        /// Delete a locale resource
+        /// </summary>
+        /// <param name="plugin">Plugin</param>
         /// <param name="localizationService">Localization service</param>
         /// <param name="languageService">Language service</param>
         /// <param name="resourceName">Resource name</param>
@@ -369,6 +384,37 @@ namespace Nop.Services.Localization
         }
 
         /// <summary>
+        /// Delete a locale resource
+        /// </summary>
+        /// <param name="plugin">Plugin</param>
+        /// <param name="localizationService">Localization service</param>
+        /// <param name="languageService">Language service</param>
+        /// <param name="resourceName">Resource name</param>
+        public static async Task DeletePluginLocaleResourceAsync(this BasePlugin plugin,
+            ILocalizationService localizationService, ILanguageService languageService,
+            string resourceName)
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //actually plugin instance is not required
+                if (plugin == null)
+                    throw new ArgumentNullException(nameof(plugin));
+                if (localizationService == null)
+                    throw new ArgumentNullException(nameof(localizationService));
+                if (languageService == null)
+                    throw new ArgumentNullException(nameof(languageService));
+
+                foreach (var lang in languageService.GetAllLanguages(true))
+                {
+                    var lsr = localizationService.GetLocaleStringResourceByName(resourceName, lang.Id, false);
+                    if (lsr != null)
+                        localizationService.DeleteLocaleStringResource(lsr);
+                }
+            });
+        }
+
+        /// <summary>
         /// Add a locale resource (if new) or update an existing one
         /// </summary>
         /// <param name="plugin">Plugin</param>
@@ -382,6 +428,22 @@ namespace Nop.Services.Localization
             var languageService = EngineContext.Current.Resolve<ILanguageService>();
              AddOrUpdatePluginLocaleResource(plugin, localizationService,
                  languageService, resourceName, resourceValue, languageCulture);
+        }
+
+        /// <summary>
+        /// Add a locale resource (if new) or update an existing one
+        /// </summary>
+        /// <param name="plugin">Plugin</param>
+        /// <param name="resourceName">Resource name</param>
+        /// <param name="resourceValue">Resource value</param>
+        /// <param name="languageCulture">Language culture code. If null or empty, then a resource will be added for all languages</param>
+        public static async Task AddOrUpdatePluginLocaleResourceAsync(this BasePlugin plugin,
+            string resourceName, string resourceValue, string languageCulture = null)
+        {
+            var localizationService = EngineContext.Current.Resolve<ILocalizationService>();
+            var languageService = EngineContext.Current.Resolve<ILanguageService>();
+            await AddOrUpdatePluginLocaleResourceAsync(plugin, localizationService,
+                languageService, resourceName, resourceValue, languageCulture);
         }
 
         /// <summary>
@@ -427,6 +489,55 @@ namespace Nop.Services.Localization
                     localizationService.UpdateLocaleStringResource(lsr);
                 }
             }
+        }
+
+        /// <summary>
+        /// Add a locale resource (if new) or update an existing one
+        /// </summary>
+        /// <param name="plugin">Plugin</param>
+        /// <param name="localizationService">Localization service</param>
+        /// <param name="languageService">Language service</param>
+        /// <param name="resourceName">Resource name</param>
+        /// <param name="resourceValue">Resource value</param>
+        /// <param name="languageCulture">Language culture code. If null or empty, then a resource will be added for all languages</param>
+        public static async Task AddOrUpdatePluginLocaleResourceAsync(this BasePlugin plugin, 
+            ILocalizationService localizationService, ILanguageService languageService, 
+            string resourceName, string resourceValue, string languageCulture = null)
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //actually plugin instance is not required
+                if (plugin == null)
+                    throw new ArgumentNullException(nameof(plugin));
+                if (localizationService == null)
+                    throw new ArgumentNullException(nameof(localizationService));
+                if (languageService == null)
+                    throw new ArgumentNullException(nameof(languageService));
+
+                foreach (var lang in languageService.GetAllLanguages(true))
+                {
+                    if (!string.IsNullOrEmpty(languageCulture) && !languageCulture.Equals(lang.LanguageCulture))
+                        continue;
+
+                    var lsr = localizationService.GetLocaleStringResourceByName(resourceName, lang.Id, false);
+                    if (lsr == null)
+                    {
+                        lsr = new LocaleStringResource
+                        {
+                            LanguageId = lang.Id,
+                            ResourceName = resourceName,
+                            ResourceValue = resourceValue
+                        };
+                        localizationService.InsertLocaleStringResource(lsr);
+                    }
+                    else
+                    {
+                        lsr.ResourceValue = resourceValue;
+                        localizationService.UpdateLocaleStringResource(lsr);
+                    }
+                }
+            });
         }
 
         /// <summary>

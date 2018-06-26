@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading.Tasks;
 using System.Xml;
 using Nop.Core;
 using Nop.Core.Domain.Directory;
@@ -958,6 +959,75 @@ namespace Nop.Plugin.Shipping.UPS
         }
 
         /// <summary>
+        /// Install plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                var settings = new UPSSettings
+                {
+                    Url = "https://www.ups.com/ups.app/xml/Rate",
+                    CustomerClassification = UPSCustomerClassification.Retail,
+                    PickupType = UPSPickupType.OneTimePickup,
+                    PackagingType = UPSPackagingType.ExpressBox,
+                    PackingPackageVolume = 5184,
+                    PackingType = PackingType.PackByDimensions,
+                    PassDimensions = true
+                };
+                _settingService.SaveSetting(settings);
+            });
+
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Url", "URL");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Url.Hint", "Specify UPS URL.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccessKey", "Access Key");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccessKey.Hint", "Specify UPS access key.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccountNumber", "Account number");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccountNumber.Hint", "Specify UPS account number (required to get negotiated rates).");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Username", "Username");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Username.Hint", "Specify UPS username.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Password", "Password");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Password.Hint", "Specify UPS password.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AdditionalHandlingCharge", "Additional handling charge");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AdditionalHandlingCharge.Hint", "Enter additional handling fee to charge your customers.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.InsurePackage", "Insure package");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.InsurePackage.Hint", "Check to insure packages.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.CustomerClassification", "UPS Customer Classification");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.CustomerClassification.Hint", "Choose customer classification.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PickupType", "UPS Pickup Type");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PickupType.Hint", "Choose UPS pickup type.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackagingType", "UPS Packaging Type");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackagingType.Hint", "Choose UPS packaging type.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AvailableCarrierServices", "Carrier Services");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AvailableCarrierServices.Hint", "Select the services you want to offer to customers.");
+            //tracker events
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Departed", "Departed");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.ExportScanned", "Export scanned");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.OriginScanned", "Origin scanned");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Arrived", "Arrived");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.NotDelivered", "Not delivered");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Booked", "Booked");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Delivered", "Delivered");
+            //packing
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PassDimensions", "Pass dimensions");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PassDimensions.Hint", "Check if you want to pass package dimensions when requesting rates.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingType", "Packing type");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingType.Hint", "Choose preferred packing type.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Enums.Nop.Plugin.Shipping.UPS.PackingType.PackByDimensions", "Pack by dimensions");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Enums.Nop.Plugin.Shipping.UPS.PackingType.PackByOneItemPerPackage", "Pack by one item per package");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Enums.Nop.Plugin.Shipping.UPS.PackingType.PackByVolume", "Pack by volume");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingPackageVolume", "Package volume");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingPackageVolume.Hint", "Enter your package volume.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Tracing", "Tracing");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Tracing.Hint", "Check if you want to record plugin tracing in System Log. Warning: The entire request and response XML will be logged (including AccessKey/UserName,Password). Do not leave this enabled in a production environment.");
+             
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall plugin
         /// </summary>
         public override void Uninstall()
@@ -1011,6 +1081,66 @@ namespace Nop.Plugin.Shipping.UPS
             this.DeletePluginLocaleResource("Plugins.Shipping.UPS.Fields.Tracing.Hint");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.DeleteSetting<UPSSettings>();
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Url");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Url.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccessKey");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccessKey.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccountNumber");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AccountNumber.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Username");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Username.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Password");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Password.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AdditionalHandlingCharge");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AdditionalHandlingCharge.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.InsurePackage");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.InsurePackage.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.CustomerClassification");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.CustomerClassification.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PickupType");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PickupType.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackagingType");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackagingType.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AvailableCarrierServices");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.AvailableCarrierServices.Hint");
+            //tracker events
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Departed");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.ExportScanned");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.OriginScanned");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Arrived");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.NotDelivered");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Booked");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Tracker.Delivered");
+            //packing
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PassDimensions");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PassDimensions.Hint");
+            await this.DeletePluginLocaleResourceAsync("Enums.Nop.Plugin.Shipping.UPS.PackingType.PackByDimensions");
+            await this.DeletePluginLocaleResourceAsync("Enums.Nop.Plugin.Shipping.UPS.PackingType.PackByOneItemPerPackage");
+            await this.DeletePluginLocaleResourceAsync("Enums.Nop.Plugin.Shipping.UPS.PackingType.PackByVolume");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingType");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingType.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingPackageVolume");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.PackingPackageVolume.Hint");
+            //tracing
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Tracing");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Shipping.UPS.Fields.Tracing.Hint");
+             
+            await base.UninstallAsync();
         }
 
         #endregion

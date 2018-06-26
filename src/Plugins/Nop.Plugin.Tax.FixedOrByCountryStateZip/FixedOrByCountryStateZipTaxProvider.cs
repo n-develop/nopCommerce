@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Caching;
 using Nop.Core.Plugins;
@@ -162,6 +163,44 @@ namespace Nop.Plugin.Tax.FixedOrByCountryStateZip
         }
 
         /// <summary>
+        /// Install plugin
+        /// </summary>
+        public override async Task InstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //database objects
+                _objectContext.Install();
+
+                //settings
+                _settingService.SaveSetting(new FixedOrByCountryStateZipTaxSettings());
+            });
+
+            //locales
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fixed", "Fixed rate");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.TaxByCountryStateZip", "By Country");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.TaxCategoryName", "Tax category");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Rate", "Rate");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Store", "Store");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Store.Hint", "If an asterisk is selected, then this shipping rate will apply to all stores.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Country", "Country");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Country.Hint", "The country.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.StateProvince", "State / province");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.StateProvince.Hint", "If an asterisk is selected, then this tax rate will apply to all customers from the given country, regardless of the state.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Zip", "Zip");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Zip.Hint", "Zip / postal code. If zip is empty, then this tax rate will apply to all customers from the given country or state, regardless of the zip code.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.TaxCategory", "Tax category");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.TaxCategory.Hint", "The tax category.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Percentage", "Percentage");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Percentage.Hint", "The tax rate.");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.AddRecord", "Add tax rate");
+            await this.AddOrUpdatePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.AddRecordTitle", "New tax rate");
+             
+            await base.InstallAsync();
+        }
+
+        /// <summary>
         /// Uninstall plugin
         /// </summary>
         public override void Uninstall()
@@ -199,6 +238,52 @@ namespace Nop.Plugin.Tax.FixedOrByCountryStateZip
             this.DeletePluginLocaleResource("Plugins.Tax.FixedOrByCountryStateZip.AddRecordTitle");
 
             base.Uninstall();
+        }
+
+        /// <summary>
+        /// Uninstall plugin
+        /// </summary>
+        public override async Task UninstallAsync()
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //settings
+                _settingService.DeleteSetting<FixedOrByCountryStateZipTaxSettings>();
+
+                //fixed rates
+                var fixedRates = _taxCategoryService.GetAllTaxCategories()
+                    .Select(taxCategory =>
+                        _settingService.GetSetting(string.Format(FixedOrByCountryStateZipDefaults.FixedRateSettingsKey,
+                            taxCategory.Id)))
+                    .Where(setting => setting != null).ToList();
+                _settingService.DeleteSettings(fixedRates);
+
+                //database objects
+                _objectContext.Uninstall();
+            });
+
+            //locales
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fixed");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.TaxByCountryStateZip");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.TaxCategoryName");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Rate");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Store");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Store.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Country");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Country.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.StateProvince");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.StateProvince.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Zip");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Zip.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.TaxCategory");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.TaxCategory.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Percentage");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.Fields.Percentage.Hint");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.AddRecord");
+            await this.DeletePluginLocaleResourceAsync("Plugins.Tax.FixedOrByCountryStateZip.AddRecordTitle");
+             
+            await base.UninstallAsync();
         }
 
         #endregion

@@ -1,4 +1,6 @@
-﻿namespace Nop.Core.Plugins
+﻿using System.Threading.Tasks;
+
+namespace Nop.Core.Plugins
 {
     /// <summary>
     /// Base plugin
@@ -27,11 +29,27 @@
         }
 
         /// <summary>
+        /// Install plugin
+        /// </summary>
+        public virtual async Task InstallAsync()
+        {
+            await PluginManager.MarkPluginAsInstalledAsync(PluginDescriptor.SystemName);
+        }
+
+        /// <summary>
         /// Uninstall plugin
         /// </summary>
         public virtual void Uninstall() 
         {
             PluginManager.MarkPluginAsUninstalled(PluginDescriptor.SystemName);
+        }
+
+        /// <summary>
+        /// Uninstall plugin
+        /// </summary>
+        public virtual async Task UninstallAsync()
+        {
+            await PluginManager.MarkPluginAsUninstalledAsync(PluginDescriptor.SystemName);
         }
     }
 }
