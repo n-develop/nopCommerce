@@ -1,4 +1,5 @@
-﻿using Nop.Core.Plugins;
+﻿using System.Threading.Tasks;
+using Nop.Core.Plugins;
 using Nop.Web.Areas.Admin.Models.Plugins;
 
 namespace Nop.Web.Areas.Admin.Factories
@@ -39,10 +40,24 @@ namespace Nop.Web.Areas.Admin.Factories
         OfficialFeedPluginSearchModel PrepareOfficialFeedPluginSearchModel(OfficialFeedPluginSearchModel searchModel);
 
         /// <summary>
+        /// Prepare search model of plugins of the official feed
+        /// </summary>
+        /// <param name="searchModel">Search model of plugins of the official feed</param>
+        /// <returns>Search model of plugins of the official feed</returns>
+        Task<OfficialFeedPluginSearchModel> PrepareOfficialFeedPluginSearchModelAsync(OfficialFeedPluginSearchModel searchModel);
+
+        /// <summary>
         /// Prepare paged list model of plugins of the official feed
         /// </summary>
         /// <param name="searchModel">Search model of plugins of the official feed</param>
         /// <returns>List model of plugins of the official feed</returns>
         OfficialFeedPluginListModel PrepareOfficialFeedPluginListModel(OfficialFeedPluginSearchModel searchModel);
+
+        /// <summary>
+        /// Prepare paged list model of plugins of the official feed
+        /// </summary>
+        /// <param name="searchModel">Search model of plugins of the official feed</param>
+        /// <returns>List model of plugins of the official feed</returns>
+        Task<OfficialFeedPluginListModel> PrepareOfficialFeedPluginListModelAsync(OfficialFeedPluginSearchModel searchModel);
     }
 }

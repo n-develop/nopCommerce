@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Nop.Core;
 using Nop.Core.Domain.Cms;
@@ -312,6 +313,76 @@ namespace Nop.Web.Areas.Admin.Factories
         }
 
         /// <summary>
+        /// Prepare search model of plugins of the official feed
+        /// </summary>
+        /// <param name="searchModel">Search model of plugins of the official feed</param>
+        /// <returns>Search model of plugins of the official feed</returns>
+        public virtual async Task<OfficialFeedPluginSearchModel> PrepareOfficialFeedPluginSearchModelAsync(OfficialFeedPluginSearchModel searchModel)
+        {
+            if (searchModel == null)
+                throw new ArgumentNullException(nameof(searchModel));
+
+            //prepare available versions
+            searchModel.AvailableVersions.Add(new SelectListItem { Text = _localizationService.GetResource("Admin.Common.All"), Value = "0" });
+            foreach (var version in await _officialFeedManager.GetVersionsAsync())
+                searchModel.AvailableVersions.Add(new SelectListItem { Text = version.Name, Value = version.Id.ToString() });
+
+            //pre-select current version
+            //current version name and named on official site do not match. that's why we use "Contains"
+            var currentVersionItem = searchModel.AvailableVersions.FirstOrDefault(x => x.Text.Contains(NopVersion.CurrentVersion));
+            if (currentVersionItem != null)
+            {
+                searchModel.SearchVersionId = int.Parse(currentVersionItem.Value);
+                currentVersionItem.Selected = true;
+            }
+
+            //prepare available plugin categories
+            var pluginCategories = await _officialFeedManager.GetCategoriesAsync();
+            searchModel.AvailableCategories.Add(new SelectListItem { Text = _localizationService.GetResource("Admin.Common.All"), Value = "0" });
+            foreach (var pluginCategory in pluginCategories)
+            {
+                var pluginCategoryNames = new List<string>();
+                var tmpCategory = pluginCategory;
+                while (tmpCategory != null)
+                {
+                    pluginCategoryNames.Add(tmpCategory.Name);
+                    tmpCategory = pluginCategories.FirstOrDefault(category => category.Id == tmpCategory.ParentCategoryId);
+                }
+
+                pluginCategoryNames.Reverse();
+
+                searchModel.AvailableCategories.Add(new SelectListItem
+                {
+                    Value = pluginCategory.Id.ToString(),
+                    Text = string.Join(" >> ", pluginCategoryNames)
+                });
+            }
+
+            //prepare available prices
+            searchModel.AvailablePrices.Add(new SelectListItem
+            {
+                Value = "0",
+                Text = _localizationService.GetResource("Admin.Common.All")
+            });
+            searchModel.AvailablePrices.Add(new SelectListItem
+            {
+                Value = "10",
+                Text = _localizationService.GetResource("Admin.Configuration.Plugins.OfficialFeed.Price.Free")
+            });
+            searchModel.AvailablePrices.Add(new SelectListItem
+            {
+                Value = "20",
+                Text = _localizationService.GetResource("Admin.Configuration.Plugins.OfficialFeed.Price.Commercial")
+            });
+
+            //prepare page parameters
+            searchModel.PageSize = 15;
+            searchModel.AvailablePageSizes = "15";
+
+            return searchModel;
+        }
+
+        /// <summary>
         /// Prepare paged list model of plugins of the official feed
         /// </summary>
         /// <param name="searchModel">Search model of plugins of the official feed</param>
@@ -327,6 +398,43 @@ namespace Nop.Web.Areas.Admin.Factories
                 price: searchModel.SearchPriceId,
                 searchTerm: searchModel.SearchName,
                 pageIndex: searchModel.Page - 1, pageSize: searchModel.PageSize);
+
+            //prepare list model
+            var model = new OfficialFeedPluginListModel
+            {
+                //fill in model values from the entity
+                Data = plugins.Select(plugin => new OfficialFeedPluginModel
+                {
+                    Url = plugin.Url,
+                    Name = plugin.Name,
+                    CategoryName = plugin.Category,
+                    SupportedVersions = plugin.SupportedVersions,
+                    PictureUrl = plugin.PictureUrl,
+                    Price = plugin.Price
+                }),
+                Total = plugins.TotalCount
+            };
+
+            return model;
+        }
+
+        /// <summary>
+        /// Prepare paged list model of plugins of the official feed
+        /// </summary>
+        /// <param name="searchModel">Search model of plugins of the official feed</param>
+        /// <returns>List model of plugins of the official feed</returns>
+        public virtual async Task<OfficialFeedPluginListModel> PrepareOfficialFeedPluginListModelAsync(OfficialFeedPluginSearchModel searchModel)
+        {
+            if (searchModel == null)
+                throw new ArgumentNullException(nameof(searchModel));
+
+            //get plugins
+            var plugins = await _officialFeedManager.GetAllPluginsAsync(searchModel.SearchCategoryId,
+                searchModel.SearchVersionId,
+                searchModel.SearchPriceId,
+                searchModel.SearchName,
+                searchModel.Page - 1, 
+                searchModel.PageSize);
 
             //prepare list model
             var model = new OfficialFeedPluginListModel
