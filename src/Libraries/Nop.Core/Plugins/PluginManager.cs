@@ -90,6 +90,38 @@ namespace Nop.Core.Plugins
         }
 
         /// <summary>
+        /// Get description files
+        /// </summary>
+        /// <param name="pluginFolder">Plugin directory info</param>
+        /// <returns>Original and parsed description files</returns>
+        private static async Task<IEnumerable<KeyValuePair<string, PluginDescriptor>>> GetDescriptionFilesAndDescriptorsAsync(string pluginFolder)
+        {
+            if (pluginFolder == null)
+                throw new ArgumentNullException(nameof(pluginFolder));
+
+            //create list (<file info, parsed plugin descritor>)
+            var result = new List<KeyValuePair<string, PluginDescriptor>>();
+
+            //add display order and path to list
+            foreach (var descriptionFile in _fileProvider.GetFiles(pluginFolder, NopPluginDefaults.DescriptionFileName, false))
+            {
+                if (!IsPackagePluginFolder(_fileProvider.GetDirectoryName(descriptionFile)))
+                    continue;
+
+                //parse file
+                var pluginDescriptor = await GetPluginDescriptorFromFileAsync(descriptionFile);
+
+                //populate list
+                result.Add(new KeyValuePair<string, PluginDescriptor>(descriptionFile, pluginDescriptor));
+            }
+
+            //sort list by display order. NOTE: Lowest DisplayOrder will be first i.e 0 , 1, 1, 1, 5, 10
+            //it's required: https://www.nopcommerce.com/boards/t/17455/load-plugins-based-on-their-displayorder-on-startup.aspx
+            result.Sort((firstPair, nextPair) => firstPair.Value.DisplayOrder.CompareTo(nextPair.Value.DisplayOrder));
+            return result;
+        }
+
+        /// <summary>
         /// Get system names of installed plugins
         /// </summary>
         /// <param name="filePath">Path to the file</param>
@@ -588,6 +620,184 @@ namespace Nop.Core.Plugins
         }
 
         /// <summary>
+        /// Initialize
+        /// </summary>
+        /// <param name="applicationPartManager">Application part manager</param>
+        /// <param name="config">Config</param>
+        public static async Task InitializeAsync(ApplicationPartManager applicationPartManager, NopConfig config)
+        {
+            if (applicationPartManager == null)
+                throw new ArgumentNullException(nameof(applicationPartManager));
+
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+
+            using (new WriteLockDisposable(Locker))
+            {
+                // TODO: Add verbose exception handling / raising here since this is happening on app startup and could
+                // prevent app from starting altogether
+                var pluginFolder = _fileProvider.MapPath(NopPluginDefaults.Path);
+                _shadowCopyFolder = _fileProvider.MapPath(NopPluginDefaults.ShadowCopyPath);
+                _reserveShadowCopyFolder = _fileProvider.Combine(_fileProvider.MapPath(NopPluginDefaults.ShadowCopyPath), $"{NopPluginDefaults.ReserveShadowCopyPathName}{DateTime.Now.ToFileTimeUtc()}");
+
+                var referencedPlugins = new List<PluginDescriptor>();
+                var incompatiblePlugins = new List<string>();
+
+                try
+                {
+                    var installedPluginSystemNames = await GetInstalledPluginNamesAsync(_fileProvider.MapPath(NopPluginDefaults.InstalledPluginsFilePath));
+
+                    Debug.WriteLine("Creating shadow copy folder and querying for DLLs");
+                    //ensure folders are created
+                    _fileProvider.CreateDirectory(pluginFolder);
+                    _fileProvider.CreateDirectory(_shadowCopyFolder);
+
+                    //get list of all files in bin
+                    var binFiles = _fileProvider.GetFiles(_shadowCopyFolder, "*", false);
+                    if (config.ClearPluginShadowDirectoryOnStartup)
+                    {
+                        //clear out shadow copied plugins
+                        foreach (var f in binFiles)
+                        {
+                            if (_fileProvider.GetFileName(f).Equals("placeholder.txt", StringComparison.InvariantCultureIgnoreCase))
+                                continue;
+
+                            Debug.WriteLine("Deleting " + f);
+                            try
+                            {
+                                //ignore index.htm
+                                var fileName = _fileProvider.GetFileName(f);
+                                if (fileName.Equals("index.htm", StringComparison.InvariantCultureIgnoreCase))
+                                    continue;
+
+                                _fileProvider.DeleteFile(f);
+                            }
+                            catch (Exception exc)
+                            {
+                                Debug.WriteLine("Error deleting file " + f + ". Exception: " + exc);
+                            }
+                        }
+
+                        //delete all reserve folders
+                        foreach (var directory in _fileProvider.GetDirectories(_shadowCopyFolder, NopPluginDefaults.ReserveShadowCopyPathNamePattern))
+                        {
+                            try
+                            {
+                                _fileProvider.DeleteDirectory(directory);
+                            }
+                            catch
+                            {
+                                //do nothing
+                            }
+                        }
+                    }
+
+                    //load description files
+                    foreach (var dfd in await GetDescriptionFilesAndDescriptorsAsync(pluginFolder))
+                    {
+                        var descriptionFile = dfd.Key;
+                        var pluginDescriptor = dfd.Value;
+
+                        //ensure that version of plugin is valid
+                        if (!pluginDescriptor.SupportedVersions.Contains(NopVersion.CurrentVersion, StringComparer.InvariantCultureIgnoreCase))
+                        {
+                            incompatiblePlugins.Add(pluginDescriptor.SystemName);
+                            continue;
+                        }
+
+                        //some validation
+                        if (string.IsNullOrWhiteSpace(pluginDescriptor.SystemName))
+                            throw new Exception($"A plugin '{descriptionFile}' has no system name. Try assigning the plugin a unique name and recompiling.");
+                        if (referencedPlugins.Contains(pluginDescriptor))
+                            throw new Exception($"A plugin with '{pluginDescriptor.SystemName}' system name is already defined");
+
+                        //set 'Installed' property
+                        pluginDescriptor.Installed = installedPluginSystemNames
+                            .FirstOrDefault(x => x.Equals(pluginDescriptor.SystemName, StringComparison.InvariantCultureIgnoreCase)) != null;
+
+                        try
+                        {
+                            var directoryName = _fileProvider.GetDirectoryName(descriptionFile);
+                            if (string.IsNullOrEmpty(directoryName))
+                                throw new Exception($"Directory cannot be resolved for '{_fileProvider.GetFileName(descriptionFile)}' description file");
+
+                            //get list of all DLLs in plugins (not in bin!)
+                            var pluginFiles = _fileProvider.GetFiles(directoryName, "*.dll", false)
+                                //just make sure we're not registering shadow copied plugins
+                                .Where(x => !binFiles.Select(q => q).Contains(x))
+                                .Where(x => IsPackagePluginFolder(_fileProvider.GetDirectoryName(x)))
+                                .ToList();
+
+                            //other plugin description info
+                            var mainPluginFile = pluginFiles
+                                .FirstOrDefault(x => _fileProvider.GetFileName(x).Equals(pluginDescriptor.AssemblyFileName, StringComparison.InvariantCultureIgnoreCase));
+
+                            //plugin have wrong directory
+                            if (mainPluginFile == null)
+                            {
+                                incompatiblePlugins.Add(pluginDescriptor.SystemName);
+                                continue;
+                            }
+
+                            pluginDescriptor.OriginalAssemblyFile = mainPluginFile;
+
+                            //shadow copy main plugin file
+                            pluginDescriptor.ReferencedAssembly = PerformFileDeploy(mainPluginFile, applicationPartManager, config);
+
+                            //load all other referenced assemblies now
+                            foreach (var plugin in pluginFiles
+                                .Where(x => !_fileProvider.GetFileName(x).Equals(_fileProvider.GetFileName(mainPluginFile), StringComparison.InvariantCultureIgnoreCase))
+                                .Where(x => !IsAlreadyLoaded(x)))
+                                PerformFileDeploy(plugin, applicationPartManager, config);
+
+                            //init plugin type (only one plugin per assembly is allowed)
+                            foreach (var t in pluginDescriptor.ReferencedAssembly.GetTypes())
+                                if (typeof(IPlugin).IsAssignableFrom(t))
+                                    if (!t.IsInterface)
+                                        if (t.IsClass && !t.IsAbstract)
+                                        {
+                                            pluginDescriptor.PluginType = t;
+                                            break;
+                                        }
+
+                            referencedPlugins.Add(pluginDescriptor);
+                        }
+                        catch (ReflectionTypeLoadException ex)
+                        {
+                            //add a plugin name. this way we can easily identify a problematic plugin
+                            var msg = $"Plugin '{pluginDescriptor.FriendlyName}'. ";
+                            foreach (var e in ex.LoaderExceptions)
+                                msg += e.Message + Environment.NewLine;
+
+                            var fail = new Exception(msg, ex);
+                            throw fail;
+                        }
+                        catch (Exception ex)
+                        {
+                            //add a plugin name. this way we can easily identify a problematic plugin
+                            var msg = $"Plugin '{pluginDescriptor.FriendlyName}'. {ex.Message}";
+
+                            var fail = new Exception(msg, ex);
+                            throw fail;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    var msg = string.Empty;
+                    for (var e = ex; e != null; e = e.InnerException)
+                        msg += e.Message + Environment.NewLine;
+
+                    var fail = new Exception(msg, ex);
+                    throw fail;
+                }
+
+                ReferencedPlugins = referencedPlugins;
+                IncompatiblePlugins = incompatiblePlugins;
+            }
+        }
+
+        /// <summary>
         /// Mark plugin as installed
         /// </summary>
         /// <param name="systemName">Plugin system name</param>
@@ -729,6 +939,18 @@ namespace Nop.Core.Plugins
         }
 
         /// <summary>
+        /// Get plugin descriptor from the plugin description file
+        /// </summary>
+        /// <param name="filePath">Path to the description file</param>
+        /// <returns>Plugin descriptor</returns>
+        public static async Task<PluginDescriptor> GetPluginDescriptorFromFileAsync(string filePath)
+        {
+            var text = await _fileProvider.ReadAllTextAsync(filePath, Encoding.UTF8);
+
+            return GetPluginDescriptorFromText(text);
+        }
+
+        /// <summary>
         /// Get plugin descriptor from the description text
         /// </summary>
         /// <param name="text">Description text</param>
@@ -768,6 +990,28 @@ namespace Nop.Core.Plugins
             //save the file
             var text = JsonConvert.SerializeObject(pluginDescriptor, Formatting.Indented);
             _fileProvider.WriteAllText(filePath, text, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Save plugin descriptor to the plugin description file
+        /// </summary>
+        /// <param name="pluginDescriptor">Plugin descriptor</param>
+        public static async Task SavePluginDescriptorAsync(PluginDescriptor pluginDescriptor)
+        {
+            if (pluginDescriptor == null)
+                throw new ArgumentException(nameof(pluginDescriptor));
+
+            //get the description file path
+            if (pluginDescriptor.OriginalAssemblyFile == null)
+                throw new Exception($"Cannot load original assembly path for {pluginDescriptor.SystemName} plugin.");
+
+            var filePath = _fileProvider.Combine(_fileProvider.GetDirectoryName(pluginDescriptor.OriginalAssemblyFile), NopPluginDefaults.DescriptionFileName);
+            if (!_fileProvider.FileExists(filePath))
+                throw new Exception($"Description file for {pluginDescriptor.SystemName} plugin does not exist. {filePath}");
+
+            //save the file
+            var text = JsonConvert.SerializeObject(pluginDescriptor, Formatting.Indented);
+            await _fileProvider.WriteAllTextAsync(filePath, text, Encoding.UTF8);
         }
 
         /// <summary>
