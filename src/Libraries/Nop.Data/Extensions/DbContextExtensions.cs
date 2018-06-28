@@ -1,14 +1,16 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
 using Nop.Core;
+using Nop.Core.Infrastructure;
 
 namespace Nop.Data.Extensions
 {
@@ -35,9 +37,11 @@ namespace Nop.Data.Extensions
         /// <param name="context">Database context</param>
         /// <param name="entity">Entity</param>
         /// <param name="getValuesFunction">Function to get the values of the tracked entity</param>
-        /// <returns>Copy of the passed entity</returns>
-        private static TEntity LoadEntityCopy<TEntity>(IDbContext context, TEntity entity, Func<EntityEntry<TEntity>, PropertyValues> getValuesFunction)
-            where TEntity : BaseEntity
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains a copy of the passed entity</returns>
+        private static async Task<TEntity> LoadEntityCopyAsync<TEntity>(IDbContext context, TEntity entity,
+            Func<EntityEntry<TEntity>, CancellationToken, Task<PropertyValues>> getValuesFunction,
+            CancellationToken cancellationToken) where TEntity : BaseEntity
         {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
@@ -52,7 +56,8 @@ namespace Nop.Data.Extensions
                 return null;
 
             //get a copy of the entity
-            var entityCopy = getValuesFunction(entityEntry)?.ToObject() as TEntity;
+            var propertyValues = await getValuesFunction(entityEntry, cancellationToken);
+            var entityCopy = propertyValues?.ToObject() as TEntity;
 
             return entityCopy;
         }
@@ -107,10 +112,13 @@ namespace Nop.Data.Extensions
         /// <typeparam name="TEntity">Entity type</typeparam>
         /// <param name="context">Database context</param>
         /// <param name="entity">Entity</param>
-        /// <returns>Copy of the passed entity</returns>
-        public static TEntity LoadOriginalCopy<TEntity>(this IDbContext context, TEntity entity) where TEntity : BaseEntity
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains a copy of the passed entity</returns>
+        public static async Task<TEntity> LoadOriginalCopyAsync<TEntity>(this IDbContext context, TEntity entity,
+            CancellationToken cancellationToken = default(CancellationToken)) where TEntity : BaseEntity
         {
-            return LoadEntityCopy(context, entity, entityEntry => entityEntry.OriginalValues);
+            return await LoadEntityCopyAsync(context, entity,
+                (entityEntry, cancelToken) => Task.Run(() => entityEntry.OriginalValues, cancelToken), cancellationToken);
         }
 
         /// <summary>
@@ -119,10 +127,13 @@ namespace Nop.Data.Extensions
         /// <typeparam name="TEntity">Entity type</typeparam>
         /// <param name="context">Database context</param>
         /// <param name="entity">Entity</param>
-        /// <returns>Copy of the passed entity</returns>
-        public static TEntity LoadDatabaseCopy<TEntity>(this IDbContext context, TEntity entity) where TEntity : BaseEntity
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains a copy of the passed entity</returns>
+        public static async Task<TEntity> LoadDatabaseCopyAsync<TEntity>(this IDbContext context, TEntity entity,
+            CancellationToken cancellationToken = default(CancellationToken)) where TEntity : BaseEntity
         {
-            return LoadEntityCopy(context, entity, entityEntry => entityEntry.GetDatabaseValues());
+            return await LoadEntityCopyAsync(context, entity,
+                (entityEntry, cancelToken) => entityEntry.GetDatabaseValuesAsync(cancelToken), cancellationToken);
         }
 
         /// <summary>
@@ -130,7 +141,10 @@ namespace Nop.Data.Extensions
         /// </summary>
         /// <param name="context">Database context</param>
         /// <param name="tableName">Table name</param>
-        public static void DropPluginTable(this IDbContext context, string tableName)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that plugin table is dropped</returns>
+        public static async Task DropPluginTableAsync(this IDbContext context, string tableName,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
@@ -140,8 +154,8 @@ namespace Nop.Data.Extensions
 
             //drop the table
             var dbScript = $"IF OBJECT_ID('{tableName}', 'U') IS NOT NULL DROP TABLE [{tableName}]";
-            context.ExecuteSqlCommand(dbScript);
-            context.SaveChanges();
+            await context.ExecuteSqlCommandAsync(dbScript, cancellationToken: cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
         }
 
         /// <summary>
@@ -158,7 +172,7 @@ namespace Nop.Data.Extensions
             //try to get the EF database context
             if (!(context is DbContext dbContext))
                 throw new InvalidOperationException("Context does not support operation");
-            
+
             var entityTypeFullName = typeof(TEntity).FullName;
             if (!tableNames.ContainsKey(entityTypeFullName))
             {
@@ -196,7 +210,7 @@ namespace Nop.Data.Extensions
                 var entityType = dbContext.Model.FindEntityType(typeof(TEntity));
 
                 //get property name - max length pairs
-                columnsMaxLength.TryAdd(entityTypeFullName, 
+                columnsMaxLength.TryAdd(entityTypeFullName,
                     entityType.GetProperties().Select(property => (property.Name, property.GetMaxLength())));
             }
 
@@ -237,7 +251,7 @@ namespace Nop.Data.Extensions
                     if (!mapping.Precision.HasValue || !mapping.Scale.HasValue)
                         return (property.Name, null);
 
-                    return (property.Name, new decimal?((decimal) Math.Pow(10, mapping.Precision.Value - mapping.Scale.Value)));
+                    return (property.Name, new decimal?((decimal)Math.Pow(10, mapping.Precision.Value - mapping.Scale.Value)));
                 }));
             }
 
@@ -260,7 +274,7 @@ namespace Nop.Data.Extensions
             if (!(context is DbContext dbContext))
                 throw new InvalidOperationException("Context does not support operation");
 
-            if (!string.IsNullOrEmpty(databaseName)) 
+            if (!string.IsNullOrEmpty(databaseName))
                 return databaseName;
 
             //get database connection
@@ -277,14 +291,17 @@ namespace Nop.Data.Extensions
         /// </summary>
         /// <param name="context">Database context</param>
         /// <param name="sql">SQL script</param>
-        public static void ExecuteSqlScript(this IDbContext context, string sql)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that SQL script is executed</returns>
+        public static async Task ExecuteSqlScriptAsync(this IDbContext context, string sql,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
             var sqlCommands = GetCommandsFromScript(sql);
             foreach (var command in sqlCommands)
-                context.ExecuteSqlCommand(command);
+                await context.ExecuteSqlCommandAsync(command, cancellationToken: cancellationToken);
         }
 
         /// <summary>
@@ -292,15 +309,19 @@ namespace Nop.Data.Extensions
         /// </summary>
         /// <param name="context">Database context</param>
         /// <param name="filePath">Path to the file</param>
-        public static void ExecuteSqlScriptFromFile(this IDbContext context, string filePath)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that SQL script is executed</returns>
+        public static async Task ExecuteSqlScriptFromFileAsync(this IDbContext context, string filePath,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
-            if (!File.Exists(filePath))
+            var fileProvider = await EngineContext.Current.ResolveAsync<INopFileProvider>(cancellationToken);
+            if (!(await fileProvider.FileExistsAsync(filePath, cancellationToken)))
                 return;
 
-            context.ExecuteSqlScript(File.ReadAllText(filePath));
+            await context.ExecuteSqlScriptAsync(await fileProvider.ReadAllTextAsync(filePath, Encoding.UTF8, cancellationToken), cancellationToken);
         }
 
         #endregion

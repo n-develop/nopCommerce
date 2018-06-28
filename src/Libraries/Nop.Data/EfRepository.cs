@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Nop.Core;
 using Nop.Core.Data;
@@ -22,7 +24,7 @@ namespace Nop.Data
         #endregion
 
         #region Ctor
-        
+
         public EfRepository(IDbContext context)
         {
             this._context = context;
@@ -36,8 +38,10 @@ namespace Nop.Data
         /// Rollback of entity changes and return full error message
         /// </summary>
         /// <param name="exception">Exception</param>
-        /// <returns>Error message</returns>
-        protected string GetFullErrorTextAndRollbackEntityChanges(DbUpdateException exception)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the error message</returns>
+        protected virtual async Task<string> GetFullErrorTextAndRollbackEntityChangesAsync(DbUpdateException exception, 
+            CancellationToken cancellationToken)
         {
             //rollback entity changes
             if (_context is DbContext dbContext)
@@ -48,71 +52,78 @@ namespace Nop.Data
                 entries.ForEach(entry => entry.State = EntityState.Unchanged);
             }
 
-            _context.SaveChanges();
+            await _context.SaveChangesAsync(cancellationToken);
             return exception.ToString();
         }
 
         #endregion
 
         #region Methods
-
+        
         /// <summary>
         /// Get entity by identifier
         /// </summary>
         /// <param name="id">Identifier</param>
-        /// <returns>Entity</returns>
-        public virtual TEntity GetById(object id)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the entity</returns>
+        public virtual async Task<TEntity> GetByIdAsync(object id, CancellationToken cancellationToken)
         {
-            return Entities.Find(id);
+            return await Entities.FindAsync(new[] { id }, cancellationToken: cancellationToken);
         }
-
+        
         /// <summary>
         /// Insert entity
         /// </summary>
         /// <param name="entity">Entity</param>
-        public virtual void Insert(TEntity entity)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that the entity is inserted</returns>
+        public virtual async Task InsertAsync(TEntity entity, CancellationToken cancellationToken)
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
 
             try
             {
-                Entities.Add(entity);
-                _context.SaveChanges();
+                await Entities.AddAsync(entity, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException exception)
             {
                 //ensure that the detailed error text is saved in the Log
-                throw new Exception(GetFullErrorTextAndRollbackEntityChanges(exception), exception);
+                throw new Exception(await GetFullErrorTextAndRollbackEntityChangesAsync(exception, cancellationToken), exception);
             }
         }
-
+        
         /// <summary>
         /// Insert entities
         /// </summary>
         /// <param name="entities">Entities</param>
-        public virtual void Insert(IEnumerable<TEntity> entities)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that entities are inserted</returns>
+        public virtual async Task InsertAsync(IEnumerable<TEntity> entities, CancellationToken cancellationToken)
         {
             if (entities == null)
                 throw new ArgumentNullException(nameof(entities));
 
             try
             {
-                Entities.AddRange(entities);
-                _context.SaveChanges();
+                await Entities.AddRangeAsync(entities, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException exception)
             {
                 //ensure that the detailed error text is saved in the Log
-                throw new Exception(GetFullErrorTextAndRollbackEntityChanges(exception), exception);
+                throw new Exception(await GetFullErrorTextAndRollbackEntityChangesAsync(exception, cancellationToken), exception);
             }
         }
-
+        
         /// <summary>
         /// Update entity
         /// </summary>
         /// <param name="entity">Entity</param>
-        public virtual void Update(TEntity entity)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that entity is updated</returns>
+        public virtual async Task UpdateAsync(TEntity entity, CancellationToken cancellationToken)
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
@@ -120,20 +131,22 @@ namespace Nop.Data
             try
             {
                 Entities.Update(entity);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException exception)
             {
                 //ensure that the detailed error text is saved in the Log
-                throw new Exception(GetFullErrorTextAndRollbackEntityChanges(exception), exception);
+                throw new Exception(await GetFullErrorTextAndRollbackEntityChangesAsync(exception, cancellationToken), exception);
             }
         }
-
+        
         /// <summary>
         /// Update entities
         /// </summary>
         /// <param name="entities">Entities</param>
-        public virtual void Update(IEnumerable<TEntity> entities)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that entities are updated</returns>
+        public virtual async Task UpdateAsync(IEnumerable<TEntity> entities, CancellationToken cancellationToken)
         {
             if (entities == null)
                 throw new ArgumentNullException(nameof(entities));
@@ -141,20 +154,22 @@ namespace Nop.Data
             try
             {
                 Entities.UpdateRange(entities);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException exception)
             {
                 //ensure that the detailed error text is saved in the Log
-                throw new Exception(GetFullErrorTextAndRollbackEntityChanges(exception), exception);
+                throw new Exception(await GetFullErrorTextAndRollbackEntityChangesAsync(exception, cancellationToken), exception);
             }
         }
-
+        
         /// <summary>
         /// Delete entity
         /// </summary>
         /// <param name="entity">Entity</param>
-        public virtual void Delete(TEntity entity)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that entity is deleted</returns>
+        public virtual async Task DeleteAsync(TEntity entity, CancellationToken cancellationToken)
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
@@ -162,20 +177,22 @@ namespace Nop.Data
             try
             {
                 Entities.Remove(entity);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException exception)
             {
                 //ensure that the detailed error text is saved in the Log
-                throw new Exception(GetFullErrorTextAndRollbackEntityChanges(exception), exception);
+                throw new Exception(await GetFullErrorTextAndRollbackEntityChangesAsync(exception, cancellationToken), exception);
             }
         }
-
+        
         /// <summary>
         /// Delete entities
         /// </summary>
         /// <param name="entities">Entities</param>
-        public virtual void Delete(IEnumerable<TEntity> entities)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that entities are deleted</returns>
+        public virtual async Task DeleteAsync(IEnumerable<TEntity> entities, CancellationToken cancellationToken)
         {
             if (entities == null)
                 throw new ArgumentNullException(nameof(entities));
@@ -183,12 +200,12 @@ namespace Nop.Data
             try
             {
                 Entities.RemoveRange(entities);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException exception)
             {
                 //ensure that the detailed error text is saved in the Log
-                throw new Exception(GetFullErrorTextAndRollbackEntityChanges(exception), exception);
+                throw new Exception(await GetFullErrorTextAndRollbackEntityChangesAsync(exception, cancellationToken), exception);
             }
         }
 
@@ -214,7 +231,7 @@ namespace Nop.Data
             get
             {
                 if (_entities == null)
-                    _entities = _context.Set<TEntity>();
+                    _entities = _context.GetDbSetAsync<TEntity>().Result;
 
                 return _entities;
             }

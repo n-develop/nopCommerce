@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Nop.Core;
 using Nop.Core.Infrastructure;
@@ -6,9 +8,9 @@ using Nop.Core.Infrastructure;
 namespace Nop.Data.Extensions
 {
     /// <summary>
-    /// Represents extensions
+    /// Represents entity extensions
     /// </summary>
-    public static class EntityExtensions
+    public static partial class EntityExtensions
     {
         /// <summary>
         /// Get unproxied entity type
@@ -19,20 +21,19 @@ namespace Nop.Data.Extensions
         /// and overrides its virtual properties by inserting specific code useful for example 
         /// for tracking changes and lazy loading.
         /// </remarks>
-        /// <param name="entity"></param>
-        /// <returns>Unproxied entity type</returns>
-        public static Type GetUnproxiedEntityType(this BaseEntity entity)
+        /// <param name="entity">Entity</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the unproxied entity type</returns>
+        public static async Task<Type> GetUnproxiedEntityTypeAsync(this BaseEntity entity,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
 
-            var dbContext = EngineContext.Current.Resolve<IDbContext>() as DbContext;
-                var type = dbContext?.Model.FindRuntimeEntityType(entity.GetType()).ClrType;
+            var dbContext = await EngineContext.Current.ResolveAllAsync<IDbContext>(cancellationToken) as DbContext;
 
-            if (type == null)
-                throw new Exception("Original entity type cannot be loaded");
-
-            return type;
+            return dbContext?.Model.FindRuntimeEntityType(entity.GetType()).ClrType
+                ?? throw new Exception("Original entity type cannot be loaded");
         }
     }
 }
