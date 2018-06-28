@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nop.Core.Plugins;
 
@@ -15,5 +16,12 @@ namespace Nop.Services.Plugins
         /// <param name="archivefile">Archive file</param>
         /// <returns>List of uploaded items descriptor</returns>
         IList<IDescriptor> UploadPluginsAndThemes(IFormFile archivefile);
+
+        /// <summary>
+        /// Upload plugins and/or themes
+        /// </summary>
+        /// <param name="archivefile">Archive file</param>
+        /// <returns>List of uploaded items descriptor</returns>
+        Task<IList<IDescriptor>> UploadPluginsAndThemesAsync(IFormFile archivefile);
     }
 }
