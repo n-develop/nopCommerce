@@ -67,6 +67,38 @@ namespace Nop.Plugin.DiscountRules.CustomerRoles
         }
 
         /// <summary>
+        /// Check discount requirement
+        /// </summary>
+        /// <param name="request">Object that contains all information required to check the requirement (Current customer, discount, etc)</param>
+        /// <returns>Result</returns>
+        public async Task<DiscountRequirementValidationResult> CheckRequirementAsync(DiscountRequirementValidationRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            //invalid by default
+            var result = new DiscountRequirementValidationResult();
+
+            if (request.Customer == null)
+                return result;
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //try to get saved restricted customer role identifier
+                var restrictedRoleId = _settingService.GetSettingByKey<int>(
+                    string.Format(DiscountRequirementDefaults.SettingsKey, request.DiscountRequirementId));
+                if (restrictedRoleId == 0)
+                    return result;
+
+                //result is valid if the customer belongs to the restricted role
+                result.IsValid = request.Customer.CustomerRoles.Any(role => role.Id == restrictedRoleId && role.Active);
+
+                return result;
+            });
+        }
+
+        /// <summary>
         /// Get URL for rule configuration
         /// </summary>
         /// <param name="discountId">Discount identifier</param>

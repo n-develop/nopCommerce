@@ -1,4 +1,5 @@
-﻿using Nop.Core.Domain.Common;
+﻿using System.Threading.Tasks;
+using Nop.Core.Domain.Common;
 using Nop.Core.Plugins;
 using Nop.Services.Shipping.Tracking;
 
@@ -26,6 +27,13 @@ namespace Nop.Services.Shipping.Pickup
         /// <param name="address">Address</param>
         /// <returns>Represents a response of getting pickup points</returns>
         GetPickupPointsResponse GetPickupPoints(Address address);
+
+        /// <summary>
+        /// Get pickup points for the address
+        /// </summary>
+        /// <param name="address">Address</param>
+        /// <returns>Represents a response of getting pickup points</returns>
+        Task<GetPickupPointsResponse> GetPickupPointsAsync(Address address);
         
         #endregion
     }

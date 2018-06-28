@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Nop.Core.Plugins;
 
 namespace Nop.Services.Tax
@@ -13,5 +14,12 @@ namespace Nop.Services.Tax
         /// <param name="calculateTaxRequest">Tax calculation request</param>
         /// <returns>Tax</returns>
         CalculateTaxResult GetTaxRate(CalculateTaxRequest calculateTaxRequest);
+
+        /// <summary>
+        /// Gets tax rate
+        /// </summary>
+        /// <param name="calculateTaxRequest">Tax calculation request</param>
+        /// <returns>Tax</returns>
+        Task<CalculateTaxResult> GetTaxRateAsync(CalculateTaxRequest calculateTaxRequest);
     }
 }

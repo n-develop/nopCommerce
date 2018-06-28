@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using Nop.Core.Plugins;
 using Nop.Services.Discounts;
 
@@ -17,6 +18,16 @@ namespace Nop.Services.Tests.Discounts
             {
                 IsValid = true
             };
+        }
+
+        /// <summary>
+        /// Check discount requirement
+        /// </summary>
+        /// <param name="request">Object that contains all information required to check the requirement (Current customer, discount, etc)</param>
+        /// <returns>Result</returns>
+        public async Task<DiscountRequirementValidationResult> CheckRequirementAsync(DiscountRequirementValidationRequest request)
+        {
+            return await Task.Run(() => CheckRequirement(request));
         }
 
         /// <summary>

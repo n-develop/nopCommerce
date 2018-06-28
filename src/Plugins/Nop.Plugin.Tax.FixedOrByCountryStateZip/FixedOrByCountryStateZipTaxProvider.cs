@@ -119,6 +119,77 @@ namespace Nop.Plugin.Tax.FixedOrByCountryStateZip
 
             return result;
         }
+
+        /// <summary>
+        /// Gets tax rate
+        /// </summary>
+        /// <param name="calculateTaxRequest">Tax calculation request</param>
+        /// <returns>Tax</returns>
+        public async Task<CalculateTaxResult> GetTaxRateAsync(CalculateTaxRequest calculateTaxRequest)
+        {
+            var result = new CalculateTaxResult();
+
+            //the tax rate calculation by fixed rate
+            if (!_countryStateZipSettings.CountryStateZipEnabled)
+            {
+                //TODO Remove Task.Run(()=>{})
+                return await Task.Run(() =>
+                {
+                    result.TaxRate = _settingService.GetSettingByKey<decimal>(string.Format(
+                        FixedOrByCountryStateZipDefaults.FixedRateSettingsKey, calculateTaxRequest.TaxCategoryId));
+                    return result;
+                });
+            }
+
+            //the tax rate calculation by country & state & zip 
+            if (calculateTaxRequest.Address == null)
+            {
+                result.Errors.Add("Address is not set");
+                return result;
+            }
+
+            //first, load all tax rate records (cached) - loaded only once
+            var cacheKey = ModelCacheEventConsumer.ALL_TAX_RATES_MODEL_KEY;
+            //TODO Remove Task.Run(()=>{})
+            var allTaxRates = await Task.Run(() => _cacheManager.Get(cacheKey, () => _taxRateService.GetAllTaxRates()
+                .Select(taxRate => new TaxRateForCaching
+                {
+                    Id = taxRate.Id,
+                    StoreId = taxRate.StoreId,
+                    TaxCategoryId = taxRate.TaxCategoryId,
+                    CountryId = taxRate.CountryId,
+                    StateProvinceId = taxRate.StateProvinceId,
+                    Zip = taxRate.Zip,
+                    Percentage = taxRate.Percentage
+                }).ToList()));
+        
+        var storeId = _storeContext.CurrentStore.Id;
+            var taxCategoryId = calculateTaxRequest.TaxCategoryId;
+            var countryId = calculateTaxRequest.Address.Country?.Id ?? 0;
+            var stateProvinceId = calculateTaxRequest.Address.StateProvince?.Id ?? 0;
+            var zip = calculateTaxRequest.Address.ZipPostalCode?.Trim() ?? string.Empty;
+
+            var existingRates = allTaxRates.Where(taxRate => taxRate.CountryId == countryId && taxRate.TaxCategoryId == taxCategoryId);
+
+            //filter by store
+            var matchedByStore = existingRates.Where(taxRate => storeId == taxRate.StoreId || taxRate.StoreId == 0);
+
+            //filter by state/province
+            var matchedByStateProvince = matchedByStore.Where(taxRate => stateProvinceId == taxRate.StateProvinceId || taxRate.StateProvinceId == 0);
+                
+            //filter by zip
+            var matchedByZip = matchedByStateProvince.Where(taxRate => string.IsNullOrWhiteSpace(taxRate.Zip) || taxRate.Zip.Equals(zip, StringComparison.InvariantCultureIgnoreCase));
+
+            //sort from particular to general, more particular cases will be the first
+            var foundRecords = matchedByZip.OrderBy(r => r.StoreId == 0).ThenBy(r => r.StateProvinceId == 0).ThenBy(r => string.IsNullOrEmpty(r.Zip));
+
+            var foundRecord = foundRecords.FirstOrDefault();
+
+            if (foundRecord != null)
+                result.TaxRate = foundRecord.Percentage;
+
+            return result;
+        }
       
         /// <summary>
         /// Gets a configuration page URL

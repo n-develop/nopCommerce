@@ -1,4 +1,5 @@
-﻿using Nop.Core.Plugins;
+﻿using System.Threading.Tasks;
+using Nop.Core.Plugins;
 using Nop.Services.Tax;
 
 namespace Nop.Services.Tests.Tax
@@ -12,6 +13,16 @@ namespace Nop.Services.Tests.Tax
                 TaxRate = GetTaxRate(calculateTaxRequest.TaxCategoryId)
             };
             return result;
+        }
+
+        /// <summary>
+        /// Gets tax rate
+        /// </summary>
+        /// <param name="calculateTaxRequest">Tax calculation request</param>
+        /// <returns>Tax</returns>
+        public async Task<CalculateTaxResult> GetTaxRateAsync(CalculateTaxRequest calculateTaxRequest)
+        {
+            return await Task.Run(() => GetTaxRate(calculateTaxRequest));
         }
 
         /// <summary>

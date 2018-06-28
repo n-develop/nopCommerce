@@ -203,6 +203,134 @@ namespace Nop.Plugin.Shipping.UPS
             return sb.ToString();
         }
 
+         private async Task<string> CreateRequestAsync(string accessKey, string username, string password,
+            GetShippingOptionRequest getShippingOptionRequest, UPSCustomerClassification customerClassification,
+            UPSPickupType pickupType, UPSPackagingType packagingType, bool saturdayDelivery)
+        {
+            var zipPostalCodeFrom = getShippingOptionRequest.ZipPostalCodeFrom;
+            var zipPostalCodeTo = getShippingOptionRequest.ShippingAddress.ZipPostalCode;
+            var countryCodeFrom = getShippingOptionRequest.CountryFrom.TwoLetterIsoCode;
+            var countryCodeTo = getShippingOptionRequest.ShippingAddress.Country.TwoLetterIsoCode;
+            var stateCodeFrom = getShippingOptionRequest.StateProvinceFrom?.Abbreviation;
+            var stateCodeTo = getShippingOptionRequest.ShippingAddress.StateProvince?.Abbreviation;
+
+            var sb = new StringBuilder();
+            sb.Append("<?xml version='1.0'?>");
+            sb.Append("<AccessRequest xml:lang='en-US'>");
+            sb.AppendFormat("<AccessLicenseNumber>{0}</AccessLicenseNumber>", accessKey);
+            sb.AppendFormat("<UserId>{0}</UserId>", username);
+            sb.AppendFormat("<Password>{0}</Password>", password);
+            sb.Append("</AccessRequest>");
+            sb.Append("<?xml version='1.0'?>");
+            sb.Append("<RatingServiceSelectionRequest xml:lang='en-US'>");
+            sb.Append("<Request>");
+            sb.Append("<TransactionReference>");
+            sb.Append("<CustomerContext>Bare Bones Rate Request</CustomerContext>");
+            sb.Append("<XpciVersion>1.0001</XpciVersion>");
+            sb.Append("</TransactionReference>");
+            sb.Append("<RequestOption>Shop</RequestOption>");
+            sb.Append("</Request>");
+
+            if (string.Equals(countryCodeFrom, "US", StringComparison.InvariantCultureIgnoreCase))
+            {
+                sb.Append("<PickupType>");
+                sb.AppendFormat("<Code>{0}</Code>", GetPickupTypeCode(pickupType));
+                sb.Append("</PickupType>");
+                sb.Append("<CustomerClassification>");
+                sb.AppendFormat("<Code>{0}</Code>", GetCustomerClassificationCode(customerClassification));
+                sb.Append("</CustomerClassification>");
+            }
+
+            sb.Append("<Shipment>");
+            sb.Append("<Shipper>");
+            sb.AppendFormat("<ShipperNumber>{0}</ShipperNumber>", _upsSettings.AccountNumber);
+            sb.Append("<Address>");
+            sb.AppendFormat("<PostalCode>{0}</PostalCode>", zipPostalCodeFrom);
+            sb.AppendFormat("<CountryCode>{0}</CountryCode>", countryCodeFrom);
+            sb.Append("</Address>");
+            sb.Append("</Shipper>");
+            sb.Append("<ShipTo>");
+            sb.Append("<Address>");
+            sb.Append("<ResidentialAddressIndicator/>");
+            sb.AppendFormat("<PostalCode>{0}</PostalCode>", zipPostalCodeTo);
+            sb.AppendFormat("<CountryCode>{0}</CountryCode>", countryCodeTo);
+
+            if (!string.IsNullOrEmpty(stateCodeTo))
+                sb.AppendFormat("<StateProvinceCode>{0}</StateProvinceCode>", stateCodeTo);
+
+            sb.Append("</Address>");
+            sb.Append("</ShipTo>");
+            sb.Append("<ShipFrom>");
+            sb.Append("<Address>");
+            sb.AppendFormat("<PostalCode>{0}</PostalCode>", zipPostalCodeFrom);
+            sb.AppendFormat("<CountryCode>{0}</CountryCode>", countryCodeFrom);
+
+            if (!string.IsNullOrEmpty(stateCodeFrom))
+                sb.AppendFormat("<StateProvinceCode>{0}</StateProvinceCode>", stateCodeFrom);
+
+            sb.Append("</Address>");
+            sb.Append("</ShipFrom>");
+            sb.Append("<Service>");
+            sb.Append("<Code>03</Code>");
+            sb.Append("</Service>");
+
+            //Saturday delivery flag
+            if (saturdayDelivery)
+            {
+                sb.Append("<ShipmentServiceOptions>");
+                sb.Append("<SaturdayDelivery></SaturdayDelivery>");
+                sb.Append("</ShipmentServiceOptions>");
+            }
+
+            //negotiated rates flag
+            if (!string.IsNullOrEmpty(_upsSettings.AccountNumber) && !string.IsNullOrEmpty(stateCodeFrom) && !string.IsNullOrEmpty(stateCodeTo))
+            {
+                sb.Append("<RateInformation>");
+                sb.Append("<NegotiatedRatesIndicator/>");
+                sb.Append("</RateInformation>");
+            }
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)
+                    .CurrencyCode;
+
+                //get subTotalWithoutDiscountBase, for use as insured value (when Settings.InsurePackage)
+                //(note: prior versions used "with discount", but "without discount" better reflects true value to insure.)
+                //TODO we should use getShippingOptionRequest.Items.GetQuantity() method to get subtotal
+                _orderTotalCalculationService.GetShoppingCartSubTotal(
+                    getShippingOptionRequest.Items.Select(x => x.ShoppingCartItem).ToList(),
+                    false, out _, out List<DiscountForCaching> _, out var subTotalWithoutDiscountBase,
+                    out _);
+
+                if (_upsSettings.Tracing)
+                    _traceMessages.AppendLine(" Packing Type: " + _upsSettings.PackingType);
+
+                switch (_upsSettings.PackingType)
+                {
+                    case PackingType.PackByOneItemPerPackage:
+                        SetIndividualPackageLineItemsOneItemPerPackage(sb, getShippingOptionRequest, packagingType,
+                            currencyCode);
+                        break;
+                    case PackingType.PackByVolume:
+                        SetIndividualPackageLineItemsCubicRootDimensions(sb, getShippingOptionRequest, packagingType,
+                            subTotalWithoutDiscountBase, currencyCode);
+                        break;
+                    case PackingType.PackByDimensions:
+                    default:
+                        SetIndividualPackageLineItems(sb, getShippingOptionRequest, packagingType,
+                            subTotalWithoutDiscountBase, currencyCode);
+                        break;
+                }
+
+                sb.Append("</Shipment>");
+                sb.Append("</RatingServiceSelectionRequest>");
+
+                return sb.ToString();
+            });
+        }
+
         private void AppendPackageRequest(StringBuilder sb, UPSPackagingType packagingType, decimal length, decimal height, decimal width, decimal weight, decimal insuranceAmount, string currencyCode)
         {
             if (_upsSettings.Tracing)
@@ -473,6 +601,25 @@ namespace Nop.Plugin.Shipping.UPS
             using (var requestStream = request.GetRequestStream())
                 requestStream.Write(bytes, 0, bytes.Length);
             using (var response = request.GetResponse())
+            {
+                string responseXml;
+                using (var reader = new StreamReader(response.GetResponseStream()))
+                    responseXml = reader.ReadToEnd();
+
+                return responseXml;
+            }
+        }
+
+        private async Task<string> DoRequestAsync(string url, string requestString)
+        {
+            var bytes = Encoding.ASCII.GetBytes(requestString);
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = WebRequestMethods.Http.Post;
+            request.ContentType = MimeTypes.ApplicationXWwwFormUrlencoded;
+            request.ContentLength = bytes.Length;
+            using (var requestStream = await request.GetRequestStreamAsync())
+                await requestStream.WriteAsync(bytes, 0, bytes.Length);
+            using (var response = await request.GetResponseAsync())
             {
                 string responseXml;
                 using (var reader = new StreamReader(response.GetResponseStream()))
@@ -876,11 +1023,136 @@ namespace Nop.Plugin.Shipping.UPS
         }
 
         /// <summary>
+        ///  Gets available shipping options
+        /// </summary>
+        /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
+        /// <returns>Represents a response of getting shipping rate options</returns>
+        public async Task<GetShippingOptionResponse> GetShippingOptionsAsync(GetShippingOptionRequest getShippingOptionRequest)
+        {
+            if (getShippingOptionRequest == null)
+                throw new ArgumentNullException(nameof(getShippingOptionRequest));
+
+            var response = new GetShippingOptionResponse();
+
+            if (getShippingOptionRequest.Items == null)
+            {
+                response.AddError("No shipment items");
+                return response;
+            }
+
+            if (getShippingOptionRequest.ShippingAddress == null)
+            {
+                response.AddError("Shipping address is not set");
+                return response;
+            }
+
+            if (getShippingOptionRequest.ShippingAddress.Country == null)
+            {
+                response.AddError("Shipping country is not set");
+                return response;
+            }
+            
+            if (getShippingOptionRequest.CountryFrom == null)
+            {
+                //TODO Remove Task.Run(()=>{})
+                await Task.Run(() =>
+                {
+                    getShippingOptionRequest.CountryFrom = _countryService.GetAllCountries().FirstOrDefault();
+                });
+            }
+
+            try
+            {
+                var requestString = await CreateRequestAsync(_upsSettings.AccessKey, _upsSettings.Username, _upsSettings.Password, getShippingOptionRequest,
+                    _upsSettings.CustomerClassification, _upsSettings.PickupType, _upsSettings.PackagingType, false);
+                if (_upsSettings.Tracing)
+                    _traceMessages.AppendLine("Request:").AppendLine(requestString);
+
+                var responseXml = await DoRequestAsync(_upsSettings.Url, requestString);
+                if (_upsSettings.Tracing)
+                    _traceMessages.AppendLine("Response:").AppendLine(responseXml);
+
+                var error = "";
+                var shippingOptions = ParseResponse(responseXml, ref error);
+                if (string.IsNullOrEmpty(error))
+                {
+                    foreach (var shippingOption in shippingOptions)
+                    {
+                        if (!shippingOption.Name.ToLower().StartsWith("ups"))
+                            shippingOption.Name = $"UPS {shippingOption.Name}";
+                        shippingOption.Rate += _upsSettings.AdditionalHandlingCharge;
+                        response.ShippingOptions.Add(shippingOption);
+                    }
+                }
+                else
+                {
+                    response.AddError(error);
+                }
+
+                //Saturday delivery
+                if (_upsSettings.CarrierServicesOffered.Contains("[sa]"))
+                {
+                    requestString = await CreateRequestAsync(_upsSettings.AccessKey, _upsSettings.Username, _upsSettings.Password, getShippingOptionRequest,
+                        _upsSettings.CustomerClassification, _upsSettings.PickupType, _upsSettings.PackagingType, true);
+                    if (_upsSettings.Tracing)
+                        _traceMessages.AppendLine("Request:").AppendLine(requestString);
+
+                    responseXml = await DoRequestAsync(_upsSettings.Url, requestString);
+                    if (_upsSettings.Tracing)
+                        _traceMessages.AppendLine("Response:").AppendLine(responseXml);
+
+                    error = string.Empty;
+                    var saturdayDeliveryShippingOptions = ParseResponse(responseXml, ref error);
+                    if (string.IsNullOrEmpty(error))
+                    {
+                        foreach (var shippingOption in saturdayDeliveryShippingOptions)
+                        {
+                            shippingOption.Name =
+                                $"{(shippingOption.Name.ToLower().StartsWith("ups") ? string.Empty : "UPS ")}{shippingOption.Name} - Saturday Delivery";
+                            shippingOption.Rate += _upsSettings.AdditionalHandlingCharge;
+                            response.ShippingOptions.Add(shippingOption);
+                        }
+                    }
+                    else
+                        response.AddError(error);
+                }
+
+                if (response.ShippingOptions.Any())
+                    response.Errors.Clear();
+            }
+            catch (Exception exc)
+            {
+                response.AddError($"UPS Service is currently unavailable, try again later. {exc.Message}");
+            }
+            finally
+            {
+                if (_upsSettings.Tracing && _traceMessages.Length > 0)
+                {
+                    var shortMessage =
+                        $"UPS Get Shipping Options for customer {getShippingOptionRequest.Customer.Email}.  {getShippingOptionRequest.Items.Count} item(s) in cart";
+                    _logger.Information(shortMessage, new Exception(_traceMessages.ToString()), getShippingOptionRequest.Customer);
+                }
+            }
+
+            return response;
+        }
+
+        /// <summary>
         /// Gets fixed shipping rate (if shipping rate computation method allows it and the rate can be calculated before checkout).
         /// </summary>
         /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
         /// <returns>Fixed shipping rate; or null in case there's no fixed shipping rate</returns>
         public decimal? GetFixedRate(GetShippingOptionRequest getShippingOptionRequest)
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// Gets fixed shipping rate (if shipping rate computation method allows it and the rate can be calculated before checkout).
+        /// </summary>
+        /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
+        /// <returns>Fixed shipping rate; or null in case there's no fixed shipping rate</returns>
+        public Task<decimal?> GetFixedRateAsync(GetShippingOptionRequest getShippingOptionRequest)
         {
             return null;
         }

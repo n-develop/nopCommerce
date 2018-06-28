@@ -108,6 +108,49 @@ namespace Nop.Plugin.Pickup.PickupInStore
         }
 
         /// <summary>
+        /// Get pickup points for the address
+        /// </summary>
+        /// <param name="address">Address</param>
+        /// <returns>Represents a response of getting pickup points</returns>
+        public async Task<GetPickupPointsResponse> GetPickupPointsAsync(Address address)
+        {
+            var result = new GetPickupPointsResponse();
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                foreach (var point in _storePickupPointService.GetAllStorePickupPoints(_storeContext.CurrentStore.Id))
+                {
+                    var pointAddress = _addressService.GetAddressById(point.AddressId);
+                    if (pointAddress == null)
+                        continue;
+
+                    result.PickupPoints.Add(new PickupPoint
+                    {
+                        Id = point.Id.ToString(),
+                        Name = point.Name,
+                        Description = point.Description,
+                        Address = pointAddress.Address1,
+                        City = pointAddress.City,
+                        County = pointAddress.County,
+                        StateAbbreviation = pointAddress.StateProvince?.Abbreviation ?? string.Empty,
+                        CountryCode = pointAddress.Country?.TwoLetterIsoCode ?? string.Empty,
+                        ZipPostalCode = pointAddress.ZipPostalCode,
+                        OpeningHours = point.OpeningHours,
+                        PickupFee = point.PickupFee,
+                        DisplayOrder = point.DisplayOrder,
+                        ProviderSystemName = PluginDescriptor.SystemName
+                    });
+                }
+
+                if (!result.PickupPoints.Any())
+                    result.AddError(_localizationService.GetResource("Plugins.Pickup.PickupInStore.NoPickupPoints"));
+
+                return result;
+            });
+        }
+
+        /// <summary>
         /// Gets a configuration page URL
         /// </summary>
         public override string GetConfigurationPageUrl()

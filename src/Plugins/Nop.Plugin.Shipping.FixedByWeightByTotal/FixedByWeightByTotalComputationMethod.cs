@@ -75,6 +75,18 @@ namespace Nop.Plugin.Shipping.FixedByWeightByTotal
         }
 
         /// <summary>
+        /// Get fixed rate
+        /// </summary>
+        /// <param name="shippingMethodId">Shipping method ID</param>
+        /// <returns>Rate</returns>
+        private async Task<decimal> GetRateAsync(int shippingMethodId)
+        {
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() => _settingService.GetSettingByKey<decimal>(
+                string.Format(FixedByWeightByTotalDefaults.FixedRateSettingsKey, shippingMethodId)));
+        }
+
+        /// <summary>
         /// Get rate by weight and by total
         /// </summary>
         /// <param name="subTotal">Subtotal</param>
@@ -115,6 +127,57 @@ namespace Nop.Plugin.Shipping.FixedByWeightByTotal
             }
             
             return Math.Max(shippingTotal, decimal.Zero);
+        }
+
+        /// <summary>
+        /// Get rate by weight and by total
+        /// </summary>
+        /// <param name="subTotal">Subtotal</param>
+        /// <param name="weight">Weight</param>
+        /// <param name="shippingMethodId">Shipping method ID</param>
+        /// <param name="storeId">Store ID</param>
+        /// <param name="warehouseId">Warehouse ID</param>
+        /// <param name="countryId">Country ID</param>
+        /// <param name="stateProvinceId">State/Province ID</param>
+        /// <param name="zip">Zip code</param>
+        /// <returns>Rate</returns>
+        private async Task<decimal?> GetRateAsync(decimal subTotal, decimal weight, int shippingMethodId,
+            int storeId, int warehouseId, int countryId, int stateProvinceId, string zip)
+        {
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                var shippingByWeightByTotalRecord = _shippingByWeightByTotalService.FindRecords(shippingMethodId,
+                    storeId, warehouseId, countryId, stateProvinceId, zip, weight, subTotal);
+                if (shippingByWeightByTotalRecord == null)
+                {
+                    if (_fixedByWeightByTotalSettings.LimitMethodsToCreated)
+                        return null;
+
+                    return (decimal?)decimal.Zero;
+                }
+
+                //additional fixed cost
+                var shippingTotal = shippingByWeightByTotalRecord.AdditionalFixedCost;
+
+                //charge amount per weight unit
+                if (shippingByWeightByTotalRecord.RatePerWeightUnit > decimal.Zero)
+                {
+                    var weightRate = Math.Max(weight - shippingByWeightByTotalRecord.LowerWeightLimit, decimal.Zero);
+                    shippingTotal += shippingByWeightByTotalRecord.RatePerWeightUnit * weightRate;
+                }
+
+                //percentage rate of subtotal
+                if (shippingByWeightByTotalRecord.PercentageRateOfSubtotal > decimal.Zero)
+                {
+                    shippingTotal +=
+                        Math.Round(
+                            (decimal) ((float) subTotal *
+                                       (float) shippingByWeightByTotalRecord.PercentageRateOfSubtotal / 100f), 2);
+                }
+
+                return Math.Max(shippingTotal, decimal.Zero);
+            });
         }
 
         #endregion
@@ -200,6 +263,93 @@ namespace Nop.Plugin.Shipping.FixedByWeightByTotal
         }
 
         /// <summary>
+        ///  Gets available shipping options
+        /// </summary>
+        /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
+        /// <returns>Represents a response of getting shipping rate options</returns>
+        public async Task<GetShippingOptionResponse> GetShippingOptionsAsync(GetShippingOptionRequest getShippingOptionRequest)
+        {
+            if (getShippingOptionRequest == null)
+                throw new ArgumentNullException(nameof(getShippingOptionRequest));
+
+            var response = new GetShippingOptionResponse();
+
+            if (getShippingOptionRequest.Items == null || !getShippingOptionRequest.Items.Any())
+            {
+                response.AddError("No shipment items");
+                return response;
+            }
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(async () =>
+            {
+                //choose the shipping rate calculation method
+                if (_fixedByWeightByTotalSettings.ShippingByWeightByTotalEnabled)
+                {
+                    //shipping rate calculation by products weight
+
+                    if (getShippingOptionRequest.ShippingAddress == null)
+                    {
+                        response.AddError("Shipping address is not set");
+                        return response;
+                    }
+
+                    var storeId = getShippingOptionRequest.StoreId != 0
+                        ? getShippingOptionRequest.StoreId
+                        : _storeContext.CurrentStore.Id;
+                    var countryId = getShippingOptionRequest.ShippingAddress.CountryId ?? 0;
+                    var stateProvinceId = getShippingOptionRequest.ShippingAddress.StateProvinceId ?? 0;
+                    var warehouseId = getShippingOptionRequest.WarehouseFrom?.Id ?? 0;
+                    var zip = getShippingOptionRequest.ShippingAddress.ZipPostalCode;
+
+                    //get subtotal of shipped items
+                    var subTotal = decimal.Zero;
+                    foreach (var packageItem in getShippingOptionRequest.Items)
+                    {
+                        if (packageItem.ShoppingCartItem.IsFreeShipping(_productService, _productAttributeParser))
+                            continue;
+
+                        //TODO we should use getShippingOptionRequest.Items.GetQuantity() method to get subtotal
+                        subTotal += _priceCalculationService.GetSubTotal(packageItem.ShoppingCartItem);
+                    }
+
+                    //get weight of shipped items (excluding items with free shipping)
+                    var weight =
+                        _shippingService.GetTotalWeight(getShippingOptionRequest, ignoreFreeShippedItems: true);
+
+                    foreach (var shippingMethod in _shippingService.GetAllShippingMethods(countryId))
+                    {
+                        var rate = await GetRateAsync(subTotal, weight, shippingMethod.Id, storeId, warehouseId, countryId,
+                            stateProvinceId, zip);
+                        if (!rate.HasValue)
+                            continue;
+
+                        response.ShippingOptions.Add(new ShippingOption
+                        {
+                            Name = shippingMethod.GetLocalized(x => x.Name),
+                            Description = shippingMethod.GetLocalized(x => x.Description),
+                            Rate = rate.Value
+                        });
+                    }
+                }
+                else
+                {
+                    //shipping rate calculation by fixed rate
+                    var restrictByCountryId = getShippingOptionRequest.ShippingAddress?.Country?.Id;
+                    response.ShippingOptions = _shippingService.GetAllShippingMethods(restrictByCountryId).Select(
+                        shippingMethod => new ShippingOption
+                        {
+                            Name = shippingMethod.GetLocalized(x => x.Name),
+                            Description = shippingMethod.GetLocalized(x => x.Description),
+                            Rate = GetRateAsync(shippingMethod.Id).Result
+                        }).ToList();
+                }
+
+                return response;
+            });
+        }
+
+        /// <summary>
         /// Gets fixed shipping rate (if shipping rate computation method allows it and the rate can be calculated before checkout).
         /// </summary>
         /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
@@ -222,6 +372,35 @@ namespace Nop.Plugin.Shipping.FixedByWeightByTotal
                 return rates.FirstOrDefault();
 
             return null;
+        }
+
+        /// <summary>
+        /// Gets fixed shipping rate (if shipping rate computation method allows it and the rate can be calculated before checkout).
+        /// </summary>
+        /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
+        /// <returns>Fixed shipping rate; or null in case there's no fixed shipping rate</returns>
+        public async Task<decimal?> GetFixedRateAsync(GetShippingOptionRequest getShippingOptionRequest)
+        {
+            if (getShippingOptionRequest == null)
+                throw new ArgumentNullException(nameof(getShippingOptionRequest));
+
+            //if the "shipping calculation by weight" method is selected, the fixed rate isn't calculated
+            if (_fixedByWeightByTotalSettings.ShippingByWeightByTotalEnabled)
+                return null;
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                var restrictByCountryId = getShippingOptionRequest.ShippingAddress?.Country?.Id;
+                var rates = _shippingService.GetAllShippingMethods(restrictByCountryId)
+                    .Select(shippingMethod => GetRate(shippingMethod.Id)).Distinct().ToList();
+
+                //return default rate if all of them equal
+                if (rates.Count == 1)
+                    return (decimal?)rates.FirstOrDefault();
+
+                return null;
+            });
         }
 
         /// <summary>

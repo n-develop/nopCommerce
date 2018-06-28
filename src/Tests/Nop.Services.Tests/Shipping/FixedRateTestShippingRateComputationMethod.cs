@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using Nop.Core.Domain.Shipping;
 using Nop.Core.Plugins;
 using Nop.Services.Shipping;
@@ -42,6 +43,16 @@ namespace Nop.Services.Tests.Shipping
         }
 
         /// <summary>
+        ///  Gets available shipping options
+        /// </summary>
+        /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
+        /// <returns>Represents a response of getting shipping rate options</returns>
+        public async Task<GetShippingOptionResponse> GetShippingOptionsAsync(GetShippingOptionRequest getShippingOptionRequest)
+        {
+            return await Task.Run(() => GetShippingOptions(getShippingOptionRequest));
+        }
+
+        /// <summary>
         /// Gets fixed shipping rate (if shipping rate computation method allows it and the rate can be calculated before checkout).
         /// </summary>
         /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
@@ -52,6 +63,16 @@ namespace Nop.Services.Tests.Shipping
                 throw new ArgumentNullException(nameof(getShippingOptionRequest));
 
             return GetRate();
+        }
+
+        /// <summary>
+        /// Gets fixed shipping rate (if shipping rate computation method allows it and the rate can be calculated before checkout).
+        /// </summary>
+        /// <param name="getShippingOptionRequest">A request for getting shipping options</param>
+        /// <returns>Fixed shipping rate; or null in case there's no fixed shipping rate</returns>
+        public async Task<decimal?> GetFixedRateAsync(GetShippingOptionRequest getShippingOptionRequest)
+        {
+            return await Task.Run(() => GetFixedRate(getShippingOptionRequest));
         }
 
         #region Properties
