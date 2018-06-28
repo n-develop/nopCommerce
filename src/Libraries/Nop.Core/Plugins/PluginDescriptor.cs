@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Nop.Core.Infrastructure;
 
@@ -39,23 +41,25 @@ namespace Nop.Core.Plugins
         /// <summary>
         /// Get the instance of the plugin
         /// </summary>
-        /// <returns>Plugin instance</returns>
-        public IPlugin Instance()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the plugin instance</returns>
+        public virtual async Task<IPlugin> InstanceAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
-            return Instance<IPlugin>();
+            return await InstanceAsync<IPlugin>(cancellationToken);
         }
 
         /// <summary>
         /// Get the instance of the plugin
         /// </summary>
         /// <typeparam name="T">Type of the plugin</typeparam>
-        /// <returns>Plugin instance</returns>
-        public virtual T Instance<T>() where T : class, IPlugin
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the plugin instance</returns>
+        public virtual async Task<T> InstanceAsync<T>(CancellationToken cancellationToken = default(CancellationToken)) where T : class, IPlugin
         {
             object instance = null;
             try
             {
-                instance = EngineContext.Current.Resolve(PluginType);
+                instance = await EngineContext.Current.ResolveAsync(PluginType, cancellationToken);
             }
             catch
             {
@@ -65,7 +69,7 @@ namespace Nop.Core.Plugins
             if (instance == null)
             {
                 //not resolved
-                instance = EngineContext.Current.ResolveUnregistered(PluginType);
+                instance = await EngineContext.Current.ResolveUnregisteredAsync(PluginType, cancellationToken);
             }
 
             var typedInstance = instance as T;

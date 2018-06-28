@@ -1,55 +1,46 @@
-﻿using System.Threading.Tasks;
+﻿using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nop.Core.Plugins
 {
     /// <summary>
-    /// Base plugin
+    /// Represents the base plugin
     /// </summary>
-    public abstract class BasePlugin : IPlugin
+    public abstract partial class BasePlugin : IPlugin
     {
-        /// <summary>
-        /// Gets a configuration page URL
-        /// </summary>
-        public virtual string GetConfigurationPageUrl()
-        {
-            return null;
-        }
-
         /// <summary>
         /// Gets or sets the plugin descriptor
         /// </summary>
         public virtual PluginDescriptor PluginDescriptor { get; set; }
 
         /// <summary>
-        /// Install plugin
+        /// Get a configuration page URL
         /// </summary>
-        public virtual void Install() 
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the configuration page URL</returns>
+        public virtual async Task<string> GetConfigurationPageUrlAsync(CancellationToken cancellationToken)
         {
-            PluginManager.MarkPluginAsInstalled(PluginDescriptor.SystemName);
+            return await Task.FromResult<string>(null);
         }
 
         /// <summary>
         /// Install plugin
         /// </summary>
-        public virtual async Task InstallAsync()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that plugin is installed</returns>
+        public virtual async Task InstallAsync(CancellationToken cancellationToken)
         {
-            await PluginManager.MarkPluginAsInstalledAsync(PluginDescriptor.SystemName);
+            await PluginManager.MarkPluginAsInstalledAsync(PluginDescriptor.SystemName, cancellationToken);
         }
 
         /// <summary>
         /// Uninstall plugin
         /// </summary>
-        public virtual void Uninstall() 
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that plugin is uninstalled</returns>
+        public virtual async Task UninstallAsync(CancellationToken cancellationToken)
         {
-            PluginManager.MarkPluginAsUninstalled(PluginDescriptor.SystemName);
-        }
-
-        /// <summary>
-        /// Uninstall plugin
-        /// </summary>
-        public virtual async Task UninstallAsync()
-        {
-            await PluginManager.MarkPluginAsUninstalledAsync(PluginDescriptor.SystemName);
+            await PluginManager.MarkPluginAsUninstalledAsync(PluginDescriptor.SystemName, cancellationToken);
         }
     }
 }

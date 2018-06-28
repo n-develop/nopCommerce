@@ -1,9 +1,10 @@
-﻿namespace Nop.Core.Plugins
+﻿
+namespace Nop.Core.Plugins
 {
     /// <summary>
     /// Represents descriptor of the application extension (plugin or theme)
     /// </summary>
-    public interface IDescriptor
+    public partial interface IDescriptor
     {
         /// <summary>
         /// Gets or sets the system name
@@ -13,6 +14,6 @@
         /// <summary>
         /// Gets or sets the friendly name
         /// </summary>
-         string FriendlyName { get; set; }
+        string FriendlyName { get; set; }
     }
 }
