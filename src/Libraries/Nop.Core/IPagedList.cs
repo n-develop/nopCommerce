@@ -3,9 +3,10 @@
 namespace Nop.Core
 {
     /// <summary>
-    /// Paged list interface
+    /// Represents a paged list
     /// </summary>
-    public interface IPagedList<T> : IList<T>
+    /// <typeparam name="T">The type of the elements in the list</typeparam>
+    public partial interface IPagedList<T> : IList<T>
     {
         /// <summary>
         /// Page index

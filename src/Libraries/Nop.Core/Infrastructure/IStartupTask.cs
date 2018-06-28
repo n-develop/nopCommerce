@@ -1,14 +1,19 @@
-﻿namespace Nop.Core.Infrastructure
+﻿using System.Threading;
+using System.Threading.Tasks;
+
+namespace Nop.Core.Infrastructure
 {
     /// <summary>
-    /// Interface which should be implemented by tasks run on startup
+    /// Represents a task that runs on startup
     /// </summary>
-    public interface IStartupTask 
+    public partial interface IStartupTask
     {
         /// <summary>
         /// Executes a task
         /// </summary>
-        void Execute();
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that startup task is executed</returns>
+        Task ExecuteAsync(CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
         /// Gets order of this startup task implementation

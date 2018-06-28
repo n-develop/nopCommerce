@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Nop.Core.Infrastructure;
 
@@ -25,29 +27,31 @@ namespace Nop.Core.Data
         /// <param name="filePath">File path; pass null to use the default settings file</param>
         /// <param name="reloadSettings">Whether to reload data, if they already loaded</param>
         /// <param name="fileProvider">File provider</param>
-        /// <returns>Data settings</returns>
-        public static DataSettings LoadSettings(string filePath = null, bool reloadSettings = false, INopFileProvider fileProvider = null)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains loaded settings</returns>
+        public static async Task<DataSettings> LoadSettingsAsync(string filePath = null, bool reloadSettings = false, INopFileProvider fileProvider = null,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (!reloadSettings && Singleton<DataSettings>.Instance != null)
                 return Singleton<DataSettings>.Instance;
 
             fileProvider = fileProvider ?? CommonHelper.DefaultFileProvider;
-            filePath = filePath ?? fileProvider.MapPath(NopDataSettingsDefaults.FilePath);
+            filePath = filePath ?? await fileProvider.MapPathAsync(NopDataSettingsDefaults.FilePath, cancellationToken);
 
             //check whether file exists
-            if (!fileProvider.FileExists(filePath))
+            if (!(await fileProvider.FileExistsAsync(filePath, cancellationToken)))
             {
                 //if not, try to parse the file that was used in previous nopCommerce versions
-                filePath = fileProvider.MapPath(NopDataSettingsDefaults.ObsoleteFilePath);
-                if (!fileProvider.FileExists(filePath))
+                filePath = await fileProvider.MapPathAsync(NopDataSettingsDefaults.ObsoleteFilePath, cancellationToken);
+                if (!(await fileProvider.FileExistsAsync(filePath, cancellationToken)))
                     return new DataSettings();
 
                 //get data settings from the old txt file
                 var dataSettings = new DataSettings();
-                using (var reader = new StringReader(fileProvider.ReadAllText(filePath, Encoding.UTF8)))
+                using (var reader = new StringReader(await fileProvider.ReadAllTextAsync(filePath, Encoding.UTF8, cancellationToken)))
                 {
                     string settingsLine;
-                    while ((settingsLine = reader.ReadLine()) != null)
+                    while ((settingsLine = await reader.ReadLineAsync()) != null)
                     {
                         var separatorIndex = settingsLine.IndexOf(':');
                         if (separatorIndex == -1)
@@ -59,7 +63,8 @@ namespace Nop.Core.Data
                         switch (key)
                         {
                             case "DataProvider":
-                                dataSettings.DataProvider = Enum.TryParse(value, true, out DataProviderType providerType) ? providerType : DataProviderType.Unknown;
+                                dataSettings.DataProvider = Enum.TryParse(value, true, out DataProviderType providerType)
+                                    ? providerType : DataProviderType.Unknown;
                                 continue;
                             case "DataConnectionString":
                                 dataSettings.DataConnectionString = value;
@@ -72,16 +77,16 @@ namespace Nop.Core.Data
                 }
 
                 //save data settings to the new file
-                SaveSettings(dataSettings, fileProvider);
+                await SaveSettingsAsync(dataSettings, fileProvider, cancellationToken);
 
                 //and delete the old one
-                fileProvider.DeleteFile(filePath);
+                await fileProvider.DeleteFileAsync(filePath, cancellationToken);
 
                 Singleton<DataSettings>.Instance = dataSettings;
                 return Singleton<DataSettings>.Instance;
             }
 
-            var text = fileProvider.ReadAllText(filePath, Encoding.UTF8);
+            var text = await fileProvider.ReadAllTextAsync(filePath, Encoding.UTF8, cancellationToken);
             if (string.IsNullOrEmpty(text))
                 return new DataSettings();
 
@@ -96,19 +101,38 @@ namespace Nop.Core.Data
         /// </summary>
         /// <param name="settings">Data settings</param>
         /// <param name="fileProvider">File provider</param>
-        public static void SaveSettings(DataSettings settings, INopFileProvider fileProvider = null)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that settings are saved</returns>
+        public static async Task SaveSettingsAsync(DataSettings settings, INopFileProvider fileProvider = null,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             Singleton<DataSettings>.Instance = settings ?? throw new ArgumentNullException(nameof(settings));
 
             fileProvider = fileProvider ?? CommonHelper.DefaultFileProvider;
-            var filePath = fileProvider.MapPath(NopDataSettingsDefaults.FilePath);
+            var filePath = await fileProvider.MapPathAsync(NopDataSettingsDefaults.FilePath, cancellationToken);
 
             //create file if not exists
-            fileProvider.CreateFile(filePath);
+            await fileProvider.CreateFileAsync(filePath, cancellationToken);
 
             //save data settings to the file
             var text = JsonConvert.SerializeObject(Singleton<DataSettings>.Instance, Formatting.Indented);
-            fileProvider.WriteAllText(filePath, text, Encoding.UTF8);
+            await fileProvider.WriteAllTextAsync(filePath, text, Encoding.UTF8, cancellationToken);
+        }
+
+        /// <summary>
+        /// Get a value indicating whether database is already installed
+        /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether database is already installed</returns>
+        public static async Task<bool> DatabaseIsInstalledAsync(CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (!_databaseIsInstalled.HasValue)
+            {
+                var settings = await LoadSettingsAsync(reloadSettings: true, cancellationToken: cancellationToken);
+                _databaseIsInstalled = !string.IsNullOrEmpty(settings?.DataConnectionString);
+            }
+
+            return _databaseIsInstalled.Value;
         }
 
         /// <summary>
@@ -117,24 +141,6 @@ namespace Nop.Core.Data
         public static void ResetCache()
         {
             _databaseIsInstalled = null;
-        }
-
-        #endregion
-
-        #region Properties
-
-        /// <summary>
-        /// Gets a value indicating whether database is already installed
-        /// </summary>
-        public static bool DatabaseIsInstalled
-        {
-            get
-            {
-                if (!_databaseIsInstalled.HasValue)
-                    _databaseIsInstalled = !string.IsNullOrEmpty(LoadSettings(reloadSettings: true)?.DataConnectionString);
-
-                return _databaseIsInstalled.Value;
-            }
         }
 
         #endregion

@@ -1,4 +1,6 @@
-﻿using Nop.Core.Domain.Customers;
+﻿using System.Threading;
+using System.Threading.Tasks;
+using Nop.Core.Domain.Customers;
 using Nop.Core.Domain.Directory;
 using Nop.Core.Domain.Localization;
 using Nop.Core.Domain.Tax;
@@ -9,37 +11,81 @@ namespace Nop.Core
     /// <summary>
     /// Represents work context
     /// </summary>
-    public interface IWorkContext
+    public partial interface IWorkContext
     {
         /// <summary>
-        /// Gets or sets the current customer
+        /// Get the current customer
         /// </summary>
-        Customer CurrentCustomer { get; set; }
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the current customer</returns>
+        Task<Customer> GetCurrentCustomerAsync(CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
-        /// Gets the original customer (in case the current one is impersonated)
+        /// Set the current customer
         /// </summary>
-        Customer OriginalCustomerIfImpersonated { get; }
+        /// <param name="customer">Customer</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that current customer is set</returns>
+        Task SetCurrentCustomerAsync(Customer customer, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
-        /// Gets the current vendor (logged-in manager)
+        /// Get the original customer (in case the current one is impersonated)
         /// </summary>
-        Vendor CurrentVendor { get; }
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the original customer</returns>
+        Task<Customer> GetOriginalCustomerIfImpersonatedAsync(CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
-        /// Gets or sets current user working language
+        /// Get the current vendor (logged-in manager)
         /// </summary>
-        Language WorkingLanguage { get; set; }
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the current vendor</returns>
+        Task<Vendor> GetCurrentVendorAsync(CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
-        /// Gets or sets current user working currency
+        /// Get the working language
         /// </summary>
-        Currency WorkingCurrency { get; set; }
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the working language</returns>
+        Task<Language> GetWorkingLanguageAsync(CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
-        /// Gets or sets current tax display type
+        /// Set the working language
         /// </summary>
-        TaxDisplayType TaxDisplayType { get; set; }
+        /// <param name="language">Language</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that working language is set</returns>
+        Task SetWorkingLanguageAsync(Language language, CancellationToken cancellationToken = default(CancellationToken));
+
+        /// <summary>
+        /// Get the working currency
+        /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the working currency</returns>
+        Task<Currency> GetWorkingCurrencyAsync(CancellationToken cancellationToken = default(CancellationToken));
+
+        /// <summary>
+        /// Set the working currency
+        /// </summary>
+        /// <param name="currency">Currency</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that working currency is set</returns>
+        Task SetWorkingCurrencyAsync(Currency currency, CancellationToken cancellationToken = default(CancellationToken));
+
+        /// <summary>
+        /// Get the current tax display type
+        /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the current tax display type</returns>
+        Task<TaxDisplayType> GetTaxDisplayTypeAsync(CancellationToken cancellationToken = default(CancellationToken));
+
+        /// <summary>
+        /// Set the current tax display type
+        /// </summary>
+        /// <param name="taxDisplayType">Tax display type</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that current tax display type is set</returns>
+        Task SetTaxDisplayTypeAsync(TaxDisplayType taxDisplayType, CancellationToken cancellationToken = default(CancellationToken));
 
         /// <summary>
         /// Gets or sets value indicating whether we're in admin area

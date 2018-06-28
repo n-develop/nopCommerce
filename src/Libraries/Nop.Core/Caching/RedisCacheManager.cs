@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Nop.Core.Configuration;
@@ -17,7 +18,7 @@ namespace Nop.Core.Caching
 
         private readonly ICacheManager _perRequestCacheManager;
         private readonly IRedisConnectionWrapper _connectionWrapper;
-        private readonly IDatabase _db;
+        private IDatabase _db;
 
         #endregion
 
@@ -30,7 +31,7 @@ namespace Nop.Core.Caching
         /// <param name="connectionWrapper">ConnectionW wrapper</param>
         /// <param name="config">Config</param>
         public RedisCacheManager(ICacheManager perRequestCacheManager,
-            IRedisConnectionWrapper connectionWrapper, 
+            IRedisConnectionWrapper connectionWrapper,
             NopConfig config)
         {
             if (string.IsNullOrEmpty(config.RedisCachingConnectionString))
@@ -40,8 +41,6 @@ namespace Nop.Core.Caching
 
             // ConnectionMultiplexer.Connect should only be called once and shared between callers
             this._connectionWrapper = connectionWrapper;
-
-            this._db = _connectionWrapper.GetDatabase();
         }
 
         #endregion
@@ -49,129 +48,16 @@ namespace Nop.Core.Caching
         #region Utilities
 
         /// <summary>
-        /// Gets or sets the value associated with the specified key.
+        /// Get Redis database
         /// </summary>
-        /// <typeparam name="T">Type of cached item</typeparam>
-        /// <param name="key">Key of cached item</param>
-        /// <returns>The cached value associated with the specified key</returns>
-        protected virtual async Task<T> GetAsync<T>(string key)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains Redis database</returns>
+        protected virtual async Task<IDatabase> GetDbAsync(CancellationToken cancellationToken)
         {
-            //little performance workaround here:
-            //we use "PerRequestCacheManager" to cache a loaded object in memory for the current HTTP request.
-            //this way we won't connect to Redis server many times per HTTP request (e.g. each time to load a locale or setting)
-            if (_perRequestCacheManager.IsSet(key))
-                return _perRequestCacheManager.Get<T>(key);
+            if (_db == null)
+                _db = await _connectionWrapper.GetDatabaseAsync(cancellationToken: cancellationToken);
 
-            //get serialized item from cache
-            var serializedItem = await _db.StringGetAsync(key);
-            if (!serializedItem.HasValue)
-                return default(T);
-
-            //deserialize item
-            var item = JsonConvert.DeserializeObject<T>(serializedItem);
-            if (item == null)
-                return default(T);
-
-            //set item in the per-request cache
-            _perRequestCacheManager.Set(key, item, 0);
-
-            return item;
-        }
-
-        /// <summary>
-        /// Adds the specified key and object to the cache
-        /// </summary>
-        /// <param name="key">Key of cached item</param>
-        /// <param name="data">Value for caching</param>
-        /// <param name="cacheTime">Cache time in minutes</param>
-        protected virtual async Task SetAsync(string key, object data, int cacheTime)
-        {
-            if (data == null)
-                return;
-
-            //set cache time
-            var expiresIn = TimeSpan.FromMinutes(cacheTime);
-
-            //serialize item
-            var serializedItem = JsonConvert.SerializeObject(data);
-
-            //and set it to cache
-            await _db.StringSetAsync(key, serializedItem, expiresIn);
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether the value associated with the specified key is cached
-        /// </summary>
-        /// <param name="key">Key of cached item</param>
-        /// <returns>True if item already is in cache; otherwise false</returns>
-        protected virtual async Task<bool> IsSetAsync(string key)
-        {
-            //little performance workaround here:
-            //we use "PerRequestCacheManager" to cache a loaded object in memory for the current HTTP request.
-            //this way we won't connect to Redis server many times per HTTP request (e.g. each time to load a locale or setting)
-            if (_perRequestCacheManager.IsSet(key))
-                return true;
-
-            return await _db.KeyExistsAsync(key);
-        }
-
-        /// <summary>
-        /// Removes the value with the specified key from the cache
-        /// </summary>
-        /// <param name="key">Key of cached item</param>
-        protected virtual async Task RemoveAsync(string key)
-        {
-            //we should always persist the data protection key list
-            if (key.Equals(NopCachingDefaults.RedisDataProtectionKey, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            //remove item from caches
-            await _db.KeyDeleteAsync(key);
-            _perRequestCacheManager.Remove(key);
-        }
-
-        /// <summary>
-        /// Removes items by key pattern
-        /// </summary>
-        /// <param name="pattern">String key pattern</param>
-        protected virtual async Task RemoveByPatternAsync(string pattern)
-        {
-            _perRequestCacheManager.RemoveByPattern(pattern);
-
-            foreach (var endPoint in _connectionWrapper.GetEndPoints())
-            {
-                var server = _connectionWrapper.GetServer(endPoint);
-                var keys = server.Keys(database: _db.Database, pattern: $"*{pattern}*");
-
-                //we should always persist the data protection key list
-                keys = keys.Where(key => !key.ToString().Equals(NopCachingDefaults.RedisDataProtectionKey, StringComparison.OrdinalIgnoreCase));
-
-                await _db.KeyDeleteAsync(keys.ToArray());
-            }
-        }
-
-        /// <summary>
-        /// Clear all cache data
-        /// </summary>
-        protected virtual async Task ClearAsync()
-        {
-            _perRequestCacheManager.Clear();
-
-            foreach (var endPoint in _connectionWrapper.GetEndPoints())
-            {
-                var server = _connectionWrapper.GetServer(endPoint);
-
-                //we can use the code below (commented), but it requires administration permission - ",allowAdmin=true"
-                //server.FlushDatabase();
-
-                //that's why we manually delete all elements
-                var keys = server.Keys(database: _db.Database);
-
-                //we should always persist the data protection key list
-                keys = keys.Where(key => !key.ToString().Equals(NopCachingDefaults.RedisDataProtectionKey, StringComparison.OrdinalIgnoreCase));
-
-                await _db.KeyDeleteAsync(keys.ToArray());
-            }
+            return _db;
         }
 
         #endregion
@@ -183,10 +69,30 @@ namespace Nop.Core.Caching
         /// </summary>
         /// <typeparam name="T">Type of cached item</typeparam>
         /// <param name="key">Key of cached item</param>
-        /// <returns>The cached value associated with the specified key</returns>
-        public virtual T Get<T>(string key)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains cached value associated with the specified key</returns>
+        public virtual async Task<T> GetAsync<T>(string key, CancellationToken cancellationToken)
         {
-            return this.GetAsync<T>(key).Result;
+            //little performance workaround here:
+            //we use "PerRequestCacheManager" to cache a loaded object in memory for the current HTTP request.
+            //this way we won't connect to Redis server many times per HTTP request (e.g. each time to load a locale or setting)
+            if (await _perRequestCacheManager.IsSetAsync(key, cancellationToken))
+                return await _perRequestCacheManager.GetAsync<T>(key, cancellationToken);
+
+            //get serialized item from cache
+            var serializedItem = await (await GetDbAsync(cancellationToken)).StringGetAsync(key);
+            if (!serializedItem.HasValue)
+                return default(T);
+
+            //deserialize item
+            var item = JsonConvert.DeserializeObject<T>(serializedItem);
+            if (item == null)
+                return default(T);
+
+            //set item in the per-request cache
+            await _perRequestCacheManager.SetAsync(key, item, 0, cancellationToken);
+
+            return item;
         }
 
         /// <summary>
@@ -195,9 +101,21 @@ namespace Nop.Core.Caching
         /// <param name="key">Key of cached item</param>
         /// <param name="data">Value for caching</param>
         /// <param name="cacheTime">Cache time in minutes</param>
-        public virtual async void Set(string key, object data, int cacheTime)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that item is addded to the cache</returns>
+        public virtual async Task SetAsync(string key, object data, int cacheTime, CancellationToken cancellationToken)
         {
-            await this.SetAsync(key, data, cacheTime);
+            if (data == null)
+                return;
+
+            //set cache time
+            var expiresIn = TimeSpan.FromMinutes(cacheTime);
+
+            //serialize item
+            var serializedItem = JsonConvert.SerializeObject(data);
+
+            //and set it to cache
+            await (await GetDbAsync(cancellationToken)).StringSetAsync(key, serializedItem, expiresIn);
         }
 
         /// <summary>
@@ -205,35 +123,85 @@ namespace Nop.Core.Caching
         /// </summary>
         /// <param name="key">Key of cached item</param>
         /// <returns>True if item already is in cache; otherwise false</returns>
-        public virtual bool IsSet(string key)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether item is already in the cache</returns>
+        public virtual async Task<bool> IsSetAsync(string key, CancellationToken cancellationToken)
         {
-            return this.IsSetAsync(key).Result;
+            //little performance workaround here:
+            //we use "PerRequestCacheManager" to cache a loaded object in memory for the current HTTP request.
+            //this way we won't connect to Redis server many times per HTTP request (e.g. each time to load a locale or setting)
+            if (await _perRequestCacheManager.IsSetAsync(key, cancellationToken))
+                return true;
+
+            return await (await GetDbAsync(cancellationToken)).KeyExistsAsync(key);
         }
 
         /// <summary>
         /// Removes the value with the specified key from the cache
         /// </summary>
         /// <param name="key">Key of cached item</param>
-        public virtual async void Remove(string key)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that item is deleted</returns>
+        public virtual async Task RemoveAsync(string key, CancellationToken cancellationToken)
         {
-            await this.RemoveAsync(key);
+            //we should always persist the data protection key list
+            if (key.Equals(NopCachingDefaults.RedisDataProtectionKey, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            //remove item from caches
+            await (await GetDbAsync(cancellationToken)).KeyDeleteAsync(key);
+            await _perRequestCacheManager.RemoveAsync(key, cancellationToken);
         }
 
         /// <summary>
         /// Removes items by key pattern
         /// </summary>
         /// <param name="pattern">String key pattern</param>
-        public virtual async void RemoveByPattern(string pattern)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that items are deleted by key pattern</returns>
+        public virtual async Task RemoveByPatternAsync(string pattern, CancellationToken cancellationToken)
         {
-            await this.RemoveByPatternAsync(pattern);
+            await _perRequestCacheManager.RemoveByPatternAsync(pattern, cancellationToken);
+
+            var db = await GetDbAsync(cancellationToken);
+            var endPoints = await _connectionWrapper.GetEndPointsAsync(cancellationToken);
+            var servers = await Task.WhenAll(endPoints.Select(endPoint => _connectionWrapper.GetServerAsync(endPoint, cancellationToken)));
+            await Task.WhenAll(servers.Select(server =>
+            {
+                var keys = server.Keys(database: db.Database, pattern: $"*{pattern}*");
+
+                //we should always persist the data protection key list
+                keys = keys.Where(key => !key.ToString().Equals(NopCachingDefaults.RedisDataProtectionKey, StringComparison.OrdinalIgnoreCase));
+
+                return db.KeyDeleteAsync(keys.ToArray());
+            }));
         }
 
         /// <summary>
         /// Clear all cache data
         /// </summary>
-        public virtual async void Clear()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that all items are deleted</returns>
+        public virtual async Task ClearAsync(CancellationToken cancellationToken)
         {
-            await this.ClearAsync();
+            await _perRequestCacheManager.ClearAsync(cancellationToken);
+
+            var db = await GetDbAsync(cancellationToken);
+            var endPoints = await _connectionWrapper.GetEndPointsAsync(cancellationToken);
+            var servers = await Task.WhenAll(endPoints.Select(endPoint => _connectionWrapper.GetServerAsync(endPoint, cancellationToken)));
+            await Task.WhenAll(servers.Select(server =>
+            {
+                //we can use the code below (commented), but it requires administration permission - ",allowAdmin=true"
+                //return server.FlushDatabaseAsync();
+
+                //that's why we manually delete all elements
+                var keys = server.Keys(database: db.Database);
+
+                //we should always persist the data protection key list
+                keys = keys.Where(key => !key.ToString().Equals(NopCachingDefaults.RedisDataProtectionKey, StringComparison.OrdinalIgnoreCase));
+
+                return db.KeyDeleteAsync(keys.ToArray());
+            }));
         }
 
         /// <summary>

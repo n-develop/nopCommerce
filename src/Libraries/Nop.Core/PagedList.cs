@@ -5,11 +5,11 @@ using System.Linq;
 namespace Nop.Core
 {
     /// <summary>
-    /// Paged list
+    /// Represents the paged list implementation
     /// </summary>
-    /// <typeparam name="T">T</typeparam>
+    /// <typeparam name="T">The type of the elements in the list</typeparam>
     [Serializable]
-    public class PagedList<T> : List<T>, IPagedList<T> 
+    public partial class PagedList<T> : List<T>, IPagedList<T>
     {
         /// <summary>
         /// Ctor

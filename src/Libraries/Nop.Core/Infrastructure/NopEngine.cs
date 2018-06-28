@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using AutoMapper;
@@ -21,49 +23,50 @@ namespace Nop.Core.Infrastructure
     /// <summary>
     /// Represents Nop engine
     /// </summary>
-    public class NopEngine : IEngine
+    public partial class NopEngine : IEngine
     {
-        #region Properties
+        #region Fields
 
-        /// <summary>
-        /// Gets or sets service provider
-        /// </summary>
-        private IServiceProvider _serviceProvider { get; set; }
+        private IServiceProvider _serviceProvider;
 
         #endregion
 
         #region Utilities
 
         /// <summary>
-        /// Get IServiceProvider
+        /// Get service provider
         /// </summary>
-        /// <returns>IServiceProvider</returns>
-        protected IServiceProvider GetServiceProvider()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains service provider</returns>
+        protected virtual async Task<IServiceProvider> GetServiceProviderAsync(CancellationToken cancellationToken)
         {
-            var accessor = ServiceProvider.GetService<IHttpContextAccessor>();
-            var context = accessor.HttpContext;
-            return context?.RequestServices ?? ServiceProvider;
+            return await Task.Run(() =>
+            {
+                var accessor = ServiceProvider.GetService<IHttpContextAccessor>();
+                return accessor.HttpContext?.RequestServices ?? ServiceProvider;
+            }, cancellationToken);
         }
 
         /// <summary>
         /// Run startup tasks
         /// </summary>
         /// <param name="typeFinder">Type finder</param>
-        protected virtual void RunStartupTasks(ITypeFinder typeFinder)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that startup tasks are executed</returns>
+        protected virtual async Task RunStartupTasksAsync(ITypeFinder typeFinder, CancellationToken cancellationToken)
         {
             //find startup tasks provided by other assemblies
-            var startupTasks = typeFinder.FindClassesOfType<IStartupTask>();
+            var startupTasks = await typeFinder.FindClassesOfTypeAsync<IStartupTask>(cancellationToken: cancellationToken);
 
             //create and sort instances of startup tasks
-            //we startup this interface even for not installed plugins. 
-            //otherwise, DbContext initializers won't run and a plugin installation won't work
             var instances = startupTasks
+                .Where(startupTask => PluginManager.FindPlugin(startupTask)?.Installed ?? true) //ignore not installed plugins
                 .Select(startupTask => (IStartupTask)Activator.CreateInstance(startupTask))
                 .OrderBy(startupTask => startupTask.Order);
 
             //execute tasks
             foreach (var task in instances)
-                task.Execute();
+                await task.ExecuteAsync(cancellationToken);
         }
 
         /// <summary>
@@ -72,7 +75,10 @@ namespace Nop.Core.Infrastructure
         /// <param name="nopConfig">Startup Nop configuration parameters</param>
         /// <param name="services">Collection of service descriptors</param>
         /// <param name="typeFinder">Type finder</param>
-        protected virtual IServiceProvider RegisterDependencies(NopConfig nopConfig, IServiceCollection services, ITypeFinder typeFinder)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains service provider</returns>
+        protected virtual async Task<IServiceProvider> RegisterDependenciesAsync(NopConfig nopConfig, IServiceCollection services,
+            ITypeFinder typeFinder, CancellationToken cancellationToken)
         {
             var containerBuilder = new ContainerBuilder();
 
@@ -83,7 +89,7 @@ namespace Nop.Core.Infrastructure
             containerBuilder.RegisterInstance(typeFinder).As<ITypeFinder>().SingleInstance();
 
             //find dependency registrars provided by other assemblies
-            var dependencyRegistrars = typeFinder.FindClassesOfType<IDependencyRegistrar>();
+            var dependencyRegistrars = await typeFinder.FindClassesOfTypeAsync<IDependencyRegistrar>(cancellationToken: cancellationToken);
 
             //create and sort instances of dependency registrars
             var instances = dependencyRegistrars
@@ -93,7 +99,7 @@ namespace Nop.Core.Infrastructure
 
             //register all provided dependencies
             foreach (var dependencyRegistrar in instances)
-                dependencyRegistrar.Register(containerBuilder, typeFinder, nopConfig);
+                await dependencyRegistrar.RegisterAsync(containerBuilder, typeFinder, nopConfig, cancellationToken);
 
             //populate Autofac container builder with the set of registered service descriptors
             containerBuilder.Populate(services);
@@ -108,10 +114,12 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         /// <param name="services">Collection of service descriptors</param>
         /// <param name="typeFinder">Type finder</param>
-        protected virtual void AddAutoMapper(IServiceCollection services, ITypeFinder typeFinder)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that AutoMapper is configured</returns>
+        protected virtual async Task AddAutoMapperAsync(IServiceCollection services, ITypeFinder typeFinder, CancellationToken cancellationToken)
         {
             //find mapper configurations provided by other assemblies
-            var mapperConfigurations = typeFinder.FindClassesOfType<IOrderedMapperProfile>();
+            var mapperConfigurations = await typeFinder.FindClassesOfTypeAsync<IOrderedMapperProfile>(cancellationToken: cancellationToken);
 
             //create and sort instances of mapper configurations
             var instances = mapperConfigurations
@@ -120,7 +128,7 @@ namespace Nop.Core.Infrastructure
                 .OrderBy(mapperConfiguration => mapperConfiguration.Order);
 
             //create AutoMapper configuration
-            var config = new MapperConfiguration(cfg => 
+            var config = new MapperConfiguration(cfg =>
             {
                 foreach (var instance in instances)
                 {
@@ -135,6 +143,19 @@ namespace Nop.Core.Infrastructure
             AutoMapperConfiguration.Init(config);
         }
 
+        protected virtual Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+        {
+            //check for assembly already loaded
+            var assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.FullName == args.Name);
+            if (assembly != null)
+                return assembly;
+
+            //get assembly from TypeFinder
+            var tf = ResolveAsync<ITypeFinder>(default(CancellationToken)).Result;
+            assembly = tf.GetAssembliesAsync(default(CancellationToken)).Result.FirstOrDefault(a => a.FullName == args.Name);
+            return assembly;
+        }
+
         #endregion
 
         #region Methods
@@ -143,7 +164,9 @@ namespace Nop.Core.Infrastructure
         /// Initialize engine
         /// </summary>
         /// <param name="services">Collection of service descriptors</param>
-        public void Initialize(IServiceCollection services)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that engine is initialized</returns>
+        public virtual async Task InitializeAsync(IServiceCollection services, CancellationToken cancellationToken)
         {
             //most of API providers require TLS 1.2 nowadays
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
@@ -155,20 +178,7 @@ namespace Nop.Core.Infrastructure
             //initialize plugins
             var nopConfig = provider.GetRequiredService<NopConfig>();
             var mvcCoreBuilder = services.AddMvcCore();
-            PluginManager.Initialize(mvcCoreBuilder.PartManager, nopConfig);
-        }
-
-        private Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
-        {
-            //check for assembly already loaded
-            var assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.FullName == args.Name);
-            if (assembly != null)
-                return assembly;
-
-            //get assembly from TypeFinder
-            var tf = Resolve<ITypeFinder>();
-            assembly = tf.GetAssemblies().FirstOrDefault(a => a.FullName == args.Name);
-            return assembly;
+            await PluginManager.InitializeAsync(mvcCoreBuilder.PartManager, nopConfig, cancellationToken);
         }
 
         /// <summary>
@@ -176,12 +186,14 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         /// <param name="services">Collection of service descriptors</param>
         /// <param name="configuration">Configuration of the application</param>
-        /// <returns>Service provider</returns>
-        public IServiceProvider ConfigureServices(IServiceCollection services, IConfiguration configuration)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains service provider</returns>
+        public virtual async Task<IServiceProvider> ConfigureServicesAsync(IServiceCollection services, IConfiguration configuration,
+            CancellationToken cancellationToken)
         {
             //find startup configurations provided by other assemblies
             var typeFinder = new WebAppTypeFinder();
-            var startupConfigurations = typeFinder.FindClassesOfType<INopStartup>();
+            var startupConfigurations = await typeFinder.FindClassesOfTypeAsync<INopStartup>(cancellationToken: cancellationToken);
 
             //create and sort instances of startup configurations
             var instances = startupConfigurations
@@ -191,22 +203,22 @@ namespace Nop.Core.Infrastructure
 
             //configure services
             foreach (var instance in instances)
-                instance.ConfigureServices(services, configuration);
+                await instance.ConfigureServicesAsync(services, configuration, cancellationToken);
 
             //register mapper configurations
-            AddAutoMapper(services, typeFinder);
+            await AddAutoMapperAsync(services, typeFinder, cancellationToken);
 
             //register dependencies
             var nopConfig = services.BuildServiceProvider().GetService<NopConfig>();
-            RegisterDependencies(nopConfig, services, typeFinder);
+            await RegisterDependenciesAsync(nopConfig, services, typeFinder, cancellationToken);
 
             //run startup tasks
             if (!nopConfig.IgnoreStartupTasks)
-                RunStartupTasks(typeFinder);
+                await RunStartupTasksAsync(typeFinder, cancellationToken);
 
             //resolve assemblies here. otherwise, plugins can throw an exception when rendering views
             AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
-            
+
             return _serviceProvider;
         }
 
@@ -214,11 +226,13 @@ namespace Nop.Core.Infrastructure
         /// Configure HTTP request pipeline
         /// </summary>
         /// <param name="application">Builder for configuring an application's request pipeline</param>
-        public void ConfigureRequestPipeline(IApplicationBuilder application)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that request pipeline is configured</returns>
+        public virtual async Task ConfigureRequestPipelineAsync(IApplicationBuilder application, CancellationToken cancellationToken)
         {
             //find startup configurations provided by other assemblies
-            var typeFinder = Resolve<ITypeFinder>();
-            var startupConfigurations = typeFinder.FindClassesOfType<INopStartup>();
+            var typeFinder = await ResolveAsync<ITypeFinder>(cancellationToken);
+            var startupConfigurations = await typeFinder.FindClassesOfTypeAsync<INopStartup>(cancellationToken: cancellationToken);
 
             //create and sort instances of startup configurations
             var instances = startupConfigurations
@@ -228,45 +242,52 @@ namespace Nop.Core.Infrastructure
 
             //configure request pipeline
             foreach (var instance in instances)
-                instance.Configure(application);
+                await instance.ConfigureAsync(application, cancellationToken);
         }
 
         /// <summary>
         /// Resolve dependency
         /// </summary>
         /// <typeparam name="T">Type of resolved service</typeparam>
-        /// <returns>Resolved service</returns>
-        public T Resolve<T>() where T : class
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains resolved service</returns>
+        public virtual async Task<T> ResolveAsync<T>(CancellationToken cancellationToken) where T : class
         {
-            return (T)GetServiceProvider().GetRequiredService(typeof(T));
+            var serviceProvider = await GetServiceProviderAsync(cancellationToken);
+            return (T)serviceProvider.GetRequiredService(typeof(T));
         }
 
         /// <summary>
         /// Resolve dependency
         /// </summary>
         /// <param name="type">Type of resolved service</param>
-        /// <returns>Resolved service</returns>
-        public object Resolve(Type type)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains resolved service</returns>
+        public virtual async Task<object> ResolveAsync(Type type, CancellationToken cancellationToken)
         {
-            return GetServiceProvider().GetRequiredService(type);
+            var serviceProvider = await GetServiceProviderAsync(cancellationToken);
+            return serviceProvider.GetRequiredService(type);
         }
 
         /// <summary>
         /// Resolve dependencies
         /// </summary>
         /// <typeparam name="T">Type of resolved services</typeparam>
-        /// <returns>Collection of resolved services</returns>
-        public IEnumerable<T> ResolveAll<T>()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains collection of resolved services</returns>
+        public virtual async Task<IEnumerable<T>> ResolveAllAsync<T>(CancellationToken cancellationToken)
         {
-            return (IEnumerable<T>)GetServiceProvider().GetServices(typeof(T));
+            var serviceProvider = await GetServiceProviderAsync(cancellationToken);
+            return (IEnumerable<T>)serviceProvider.GetServices(typeof(T));
         }
 
         /// <summary>
         /// Resolve unregistered service
         /// </summary>
         /// <param name="type">Type of service</param>
-        /// <returns>Resolved service</returns>
-        public virtual object ResolveUnregistered(Type type)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains resolved service</returns>
+        public virtual async Task<object> ResolveUnregisteredAsync(Type type, CancellationToken cancellationToken)
         {
             Exception innerException = null;
             foreach (var constructor in type.GetConstructors())
@@ -274,13 +295,11 @@ namespace Nop.Core.Infrastructure
                 try
                 {
                     //try to resolve constructor parameters
-                    var parameters = constructor.GetParameters().Select(parameter =>
+                    var parameters = await Task.WhenAll(constructor.GetParameters().Select(async parameter =>
                     {
-                        var service = Resolve(parameter.ParameterType);
-                        if (service == null)
-                            throw new NopException("Unknown dependency");
-                        return service;
-                    });
+                        return await ResolveAsync(parameter.ParameterType, cancellationToken)
+                            ?? throw new NopException("Unknown dependency");
+                    }));
 
                     //all is ok, so create instance
                     return Activator.CreateInstance(type, parameters.ToArray());
@@ -299,7 +318,7 @@ namespace Nop.Core.Infrastructure
         #region Properties
 
         /// <summary>
-        /// Service provider
+        /// Gets or sets the service provider
         /// </summary>
         public virtual IServiceProvider ServiceProvider => _serviceProvider;
 

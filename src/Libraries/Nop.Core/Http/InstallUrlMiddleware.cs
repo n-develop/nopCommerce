@@ -8,7 +8,7 @@ namespace Nop.Core.Http
     /// <summary>
     /// Represents middleware that checks whether database is installed and redirects to installation URL in otherwise
     /// </summary>
-    public class InstallUrlMiddleware
+    public partial class InstallUrlMiddleware
     {
         #region Fields
 
@@ -18,10 +18,6 @@ namespace Nop.Core.Http
 
         #region Ctor
 
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="next">Next</param>
         public InstallUrlMiddleware(RequestDelegate next)
         {
             _next = next;
@@ -37,13 +33,13 @@ namespace Nop.Core.Http
         /// <param name="context">HTTP context</param>
         /// <param name="webHelper">Web helper</param>
         /// <returns>Task</returns>
-        public async Task Invoke(HttpContext context, IWebHelper webHelper)
+        public async Task InvokeAsync(HttpContext context, IWebHelper webHelper)
         {
             //whether database is installed
-            if (!DataSettingsManager.DatabaseIsInstalled)
+            if (!(await DataSettingsManager.DatabaseIsInstalledAsync()))
             {
-                var installUrl = $"{webHelper.GetStoreLocation()}{NopHttpDefaults.InstallPath}";
-                if (!webHelper.GetThisPageUrl(false).StartsWith(installUrl, StringComparison.InvariantCultureIgnoreCase))
+                var installUrl = $"{(await webHelper.GetStoreLocationAsync())}{NopHttpDefaults.InstallPath}";
+                if (!(await webHelper.GetThisPageUrlAsync(false)).StartsWith(installUrl, StringComparison.InvariantCultureIgnoreCase))
                 {
                     //redirect
                     context.Response.Redirect(installUrl);
@@ -54,7 +50,7 @@ namespace Nop.Core.Http
             //or call the next middleware in the request pipeline
             await _next(context);
         }
-        
+
         #endregion
     }
 }

@@ -65,7 +65,8 @@ namespace Nop.Core.Html
 
             if (replaceUrl)
             {
-                var newWindow = EngineContext.Current.Resolve<CommonSettings>().BbcodeEditorOpenLinksInNewWindow;
+                var commonSettings = EngineContext.Current.ResolveAsync<CommonSettings>().Result;
+                var newWindow = commonSettings.BbcodeEditorOpenLinksInNewWindow;
                 // format the URL tags: [url=https://www.nopCommerce.com]my site[/url]
                 // becomes: <a href="https://www.nopCommerce.com">my site</a>
                 text = regexUrl1.Replace(text, $"<a href=\"$1\" rel=\"nofollow\"{(newWindow ? " target=_blank" : "")}>$2</a>");

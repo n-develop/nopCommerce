@@ -2,13 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nop.Core.Caching
 {
     /// <summary>
-    /// Extensions of ICacheManager
+    /// Represents extensions of the cache manager
     /// </summary>
-    public static class CacheExtensions
+    public static partial class CacheExtensions
     {
         /// <summary>
         /// Get a cached item. If it's not in the cache yet, then load and cache it
@@ -17,11 +19,13 @@ namespace Nop.Core.Caching
         /// <param name="cacheManager">Cache manager</param>
         /// <param name="key">Cache key</param>
         /// <param name="acquire">Function to load item if it's not in the cache yet</param>
-        /// <returns>Cached item</returns>
-        public static T Get<T>(this ICacheManager cacheManager, string key, Func<T> acquire)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains cached item</returns>
+        public static async Task<T> GetAsync<T>(this ICacheManager cacheManager, string key,
+            Func<CancellationToken, Task<T>> acquire, CancellationToken cancellationToken = default(CancellationToken))
         {
             //use default cache time
-            return Get(cacheManager, key, NopCachingDefaults.CacheTime, acquire);
+            return await GetAsync(cacheManager, key, NopCachingDefaults.CacheTime, acquire, cancellationToken);
         }
 
         /// <summary>
@@ -32,19 +36,21 @@ namespace Nop.Core.Caching
         /// <param name="key">Cache key</param>
         /// <param name="cacheTime">Cache time in minutes (0 - do not cache)</param>
         /// <param name="acquire">Function to load item if it's not in the cache yet</param>
-        /// <returns>Cached item</returns>
-        public static T Get<T>(this ICacheManager cacheManager, string key, int cacheTime, Func<T> acquire)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains cached item</returns>
+        public static async Task<T> GetAsync<T>(this ICacheManager cacheManager, string key, int cacheTime,
+            Func<CancellationToken, Task<T>> acquire, CancellationToken cancellationToken = default(CancellationToken))
         {
             //item already is in cache, so return it
-            if (cacheManager.IsSet(key))
-                return cacheManager.Get<T>(key);
+            if (await cacheManager.IsSetAsync(key, cancellationToken))
+                return await cacheManager.GetAsync<T>(key, cancellationToken);
 
             //or create it using passed function
-            var result = acquire();
+            var result = await acquire(cancellationToken);
 
             //and set in cache (if cache time is defined)
             if (cacheTime > 0)
-                cacheManager.Set(key, result, cacheTime);
+                await cacheManager.SetAsync(key, result, cacheTime, cancellationToken);
 
             return result;
         }
@@ -55,14 +61,15 @@ namespace Nop.Core.Caching
         /// <param name="cacheManager">Cache manager</param>
         /// <param name="pattern">Pattern</param>
         /// <param name="keys">All keys in the cache</param>
-        public static void RemoveByPattern(this ICacheManager cacheManager, string pattern, IEnumerable<string> keys)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that items are deleted by the pattern</returns>
+        public static async Task RemoveByPatternAsync(this ICacheManager cacheManager, string pattern, IEnumerable<string> keys,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
-            //get cache keys that matches pattern
             var regex = new Regex(pattern, RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-            var matchesKeys = keys.Where(key => regex.IsMatch(key)).ToList();
 
-            //remove matching values
-            matchesKeys.ForEach(cacheManager.Remove);
+            //remove cache keys that matches pattern
+            await Task.WhenAll(keys.Where(key => regex.IsMatch(key)).Select(key => cacheManager.RemoveAsync(key, cancellationToken)));
         }
     }
 }

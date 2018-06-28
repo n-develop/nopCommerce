@@ -3,9 +3,9 @@
 namespace Nop.Core.Infrastructure.Mapper
 {
     /// <summary>
-    /// AutoMapper configuration
+    /// Represents AutoMapper configuration
     /// </summary>
-    public static class AutoMapperConfiguration
+    public static partial class AutoMapperConfiguration
     {
         /// <summary>
         /// Mapper

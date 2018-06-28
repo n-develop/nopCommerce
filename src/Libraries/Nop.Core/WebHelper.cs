@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Http.Features;
@@ -17,7 +19,7 @@ using Nop.Core.Infrastructure;
 namespace Nop.Core
 {
     /// <summary>
-    /// Represents a web helper
+    /// Represents the web helper implementation
     /// </summary>
     public partial class WebHelper : IWebHelper
     {
@@ -31,13 +33,8 @@ namespace Nop.Core
 
         #region Ctor
 
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="hostingConfig">Hosting config</param>
-        /// <param name="httpContextAccessor">HTTP context accessor</param>
-        /// <param name="fileProvider">File provider</param>
-        public WebHelper(HostingConfig hostingConfig, IHttpContextAccessor httpContextAccessor,
+        public WebHelper(HostingConfig hostingConfig,
+            IHttpContextAccessor httpContextAccessor,
             INopFileProvider fileProvider)
         {
             this._hostingConfig = hostingConfig;
@@ -52,44 +49,51 @@ namespace Nop.Core
         /// <summary>
         /// Check whether current HTTP request is available
         /// </summary>
-        /// <returns>True if available; otherwise false</returns>
-        protected virtual bool IsRequestAvailable()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether request is available</returns>
+        protected virtual async Task<bool> IsRequestAvailableAsync(CancellationToken cancellationToken)
         {
-            if (_httpContextAccessor?.HttpContext == null)
-                return false;
-
-            try
+            return await Task.Run(() =>
             {
-                if (_httpContextAccessor.HttpContext.Request == null)
+                if (_httpContextAccessor?.HttpContext == null)
                     return false;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
 
-            return true;
+                try
+                {
+                    if (_httpContextAccessor.HttpContext.Request == null)
+                        return false;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+
+                return true;
+            }, cancellationToken);
         }
 
         /// <summary>
         /// Is IP address specified
         /// </summary>
         /// <param name="address">IP address</param>
-        /// <returns>Result</returns>
-        protected virtual bool IsIpAddressSet(IPAddress address)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether the IP is set</returns>
+        protected virtual async Task<bool> IsIpAddressSetAsync(IPAddress address, CancellationToken cancellationToken)
         {
-            return address != null && address.ToString() != IPAddress.IPv6Loopback.ToString();
+            return await Task.Run(() => address != null && address.ToString() != IPAddress.IPv6Loopback.ToString(), cancellationToken);
         }
 
         /// <summary>
         /// Try to write web.config file
         /// </summary>
-        /// <returns></returns>
-        protected virtual bool TryWriteWebConfig()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether the web.config file was written</returns>
+        protected virtual async Task<bool> TryWriteWebConfigAsync(CancellationToken cancellationToken)
         {
             try
             {
-                _fileProvider.SetLastWriteTimeUtc(_fileProvider.MapPath(NopInfrastructureDefaults.WebConfigPath), DateTime.UtcNow);
+                var filePath = await _fileProvider.MapPathAsync(NopInfrastructureDefaults.WebConfigPath, cancellationToken);
+                await _fileProvider.SetLastWriteTimeUtcAsync(filePath, DateTime.UtcNow, cancellationToken);
                 return true;
             }
             catch
@@ -105,10 +109,11 @@ namespace Nop.Core
         /// <summary>
         /// Get URL referrer if exists
         /// </summary>
-        /// <returns>URL referrer</returns>
-        public virtual string GetUrlReferrer()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the URL referrer</returns>
+        public virtual async Task<string> GetUrlReferrerAsync(CancellationToken cancellationToken)
         {
-            if (!IsRequestAvailable())
+            if (!(await IsRequestAvailableAsync(cancellationToken)))
                 return string.Empty;
 
             //URL referrer is null in some case (for example, in IE 8)
@@ -118,10 +123,11 @@ namespace Nop.Core
         /// <summary>
         /// Get IP address from HTTP context
         /// </summary>
-        /// <returns>String of IP address</returns>
-        public virtual string GetCurrentIpAddress()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the IP address</returns>
+        public virtual async Task<string> GetCurrentIpAddressAsync(CancellationToken cancellationToken)
         {
-            if (!IsRequestAvailable())
+            if (!(await IsRequestAvailableAsync(cancellationToken)))
                 return string.Empty;
 
             var result = string.Empty;
@@ -175,14 +181,16 @@ namespace Nop.Core
         /// <param name="includeQueryString">Value indicating whether to include query strings</param>
         /// <param name="useSsl">Value indicating whether to get SSL secured page URL. Pass null to determine automatically</param>
         /// <param name="lowercaseUrl">Value indicating whether to lowercase URL</param>
-        /// <returns>Page URL</returns>
-        public virtual string GetThisPageUrl(bool includeQueryString, bool? useSsl = null, bool lowercaseUrl = false)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the page URL</returns>
+        public virtual async Task<string> GetThisPageUrlAsync(bool includeQueryString, bool? useSsl = null, bool lowercaseUrl = false,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
-            if (!IsRequestAvailable())
+            if (!(await IsRequestAvailableAsync(cancellationToken)))
                 return string.Empty;
 
             //get store location
-            var storeLocation = GetStoreLocation(useSsl ?? IsCurrentConnectionSecured());
+            var storeLocation = await GetStoreLocationAsync(useSsl ?? await IsCurrentConnectionSecuredAsync(cancellationToken), cancellationToken);
 
             //add local path to the URL
             var pageUrl = $"{storeLocation.TrimEnd('/')}{_httpContextAccessor.HttpContext.Request.Path}";
@@ -201,10 +209,11 @@ namespace Nop.Core
         /// <summary>
         /// Gets a value indicating whether current connection is secured
         /// </summary>
-        /// <returns>True if it's secured, otherwise false</returns>
-        public virtual bool IsCurrentConnectionSecured()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether current connection is secured</returns>
+        public virtual async Task<bool> IsCurrentConnectionSecuredAsync(CancellationToken cancellationToken)
         {
-            if (!IsRequestAvailable())
+            if (!(await IsRequestAvailableAsync(cancellationToken)))
                 return false;
 
             //check whether hosting uses a load balancer
@@ -223,10 +232,11 @@ namespace Nop.Core
         /// Gets store host location
         /// </summary>
         /// <param name="useSsl">Whether to get SSL secured URL</param>
-        /// <returns>Store host location</returns>
-        public virtual string GetStoreHost(bool useSsl)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the store host location</returns>
+        public virtual async Task<string> GetStoreHostAsync(bool useSsl, CancellationToken cancellationToken)
         {
-            if (!IsRequestAvailable())
+            if (!(await IsRequestAvailableAsync(cancellationToken)))
                 return string.Empty;
 
             //try to get host from the request HOST header
@@ -247,24 +257,28 @@ namespace Nop.Core
         /// Gets store location
         /// </summary>
         /// <param name="useSsl">Whether to get SSL secured URL; pass null to determine automatically</param>
-        /// <returns>Store location</returns>
-        public virtual string GetStoreLocation(bool? useSsl = null)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the store location</returns>
+        public virtual async Task<string> GetStoreLocationAsync(bool? useSsl = null,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             var storeLocation = string.Empty;
 
             //get store host
-            var storeHost = GetStoreHost(useSsl ?? IsCurrentConnectionSecured());
+            var storeHost = await GetStoreHostAsync(useSsl ?? await IsCurrentConnectionSecuredAsync(cancellationToken), cancellationToken);
             if (!string.IsNullOrEmpty(storeHost))
             {
                 //add application path base if exists
-                storeLocation = IsRequestAvailable() ? $"{storeHost.TrimEnd('/')}{_httpContextAccessor.HttpContext.Request.PathBase}" : storeHost;
+                storeLocation = await IsRequestAvailableAsync(cancellationToken)
+                    ? $"{storeHost.TrimEnd('/')}{_httpContextAccessor.HttpContext.Request.PathBase}" : storeHost;
             }
 
             //if host is empty (it is possible only when HttpContext is not available), use URL of a store entity configured in admin area
-            if (string.IsNullOrEmpty(storeHost) && DataSettingsManager.DatabaseIsInstalled)
+            if (string.IsNullOrEmpty(storeHost) && await DataSettingsManager.DatabaseIsInstalledAsync(cancellationToken))
             {
                 //do not inject IWorkContext via constructor because it'll cause circular references
-                storeLocation = EngineContext.Current.Resolve<IStoreContext>().CurrentStore?.Url
+                var storeContext = await EngineContext.Current.ResolveAsync<IStoreContext>(cancellationToken);
+                storeLocation = (await storeContext.GetCurrentStoreAsync(cancellationToken))?.Url
                     ?? throw new Exception("Current store cannot be loaded");
             }
 
@@ -277,10 +291,11 @@ namespace Nop.Core
         /// <summary>
         /// Returns true if the requested resource is one of the typical resources that needn't be processed by the cms engine.
         /// </summary>
-        /// <returns>True if the request targets a static resource file.</returns>
-        public virtual bool IsStaticResource()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether a static resource is requested</returns>
+        public virtual async Task<bool> IsStaticResourceAsync(CancellationToken cancellationToken)
         {
-            if (!IsRequestAvailable())
+            if (!(await IsRequestAvailableAsync(cancellationToken)))
                 return false;
 
             string path = _httpContextAccessor.HttpContext.Request.Path;
@@ -298,28 +313,33 @@ namespace Nop.Core
         /// <param name="url">Url to modify</param>
         /// <param name="key">Query parameter key to add</param>
         /// <param name="values">Query parameter values to add</param>
-        /// <returns>New URL with passed query parameter</returns>
-        public virtual string ModifyQueryString(string url, string key, params string[] values)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the URL with passed query parameter</returns>
+        public virtual async Task<string> ModifyQueryStringAsync(string url, string key, IEnumerable<string> values,
+            CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(url))
-                return string.Empty;
+            return await Task.Run(() =>
+            {
+                if (string.IsNullOrEmpty(url))
+                    return string.Empty;
 
-            if (string.IsNullOrEmpty(key))
+                if (string.IsNullOrEmpty(key))
+                    return url;
+
+                //get current query parameters
+                var uri = new Uri(url);
+                var queryParameters = QueryHelpers.ParseQuery(uri.Query);
+
+                //and add passed one
+                queryParameters[key] = new StringValues(values.ToArray());
+                var queryBuilder = new QueryBuilder(queryParameters
+                    .ToDictionary(parameter => parameter.Key, parameter => parameter.Value.ToString()));
+
+                //create new URL with passed query parameters
+                url = $"{uri.GetLeftPart(UriPartial.Path)}{queryBuilder.ToQueryString()}{uri.Fragment}";
+
                 return url;
-
-            //get current query parameters
-            var uri = new Uri(url);
-            var queryParameters = QueryHelpers.ParseQuery(uri.Query);
-
-            //and add passed one
-            queryParameters[key] = new StringValues(values);
-            var queryBuilder = new QueryBuilder(queryParameters
-                .ToDictionary(parameter => parameter.Key, parameter => parameter.Value.ToString()));
-
-            //create new URL with passed query parameters
-            url = $"{uri.GetLeftPart(UriPartial.Path)}{queryBuilder.ToQueryString()}{uri.Fragment}";
-
-            return url;
+            }, cancellationToken);
         }
 
         /// <summary>
@@ -328,37 +348,42 @@ namespace Nop.Core
         /// <param name="url">Url to modify</param>
         /// <param name="key">Query parameter key to remove</param>
         /// <param name="value">Query parameter value to remove; pass null to remove all query parameters with the specified key</param>
-        /// <returns>New URL without passed query parameter</returns>
-        public virtual string RemoveQueryString(string url, string key, string value = null)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the URL without passed query parameter</returns>
+        public virtual async Task<string> RemoveQueryStringAsync(string url, string key, string value = null,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
-            if (string.IsNullOrEmpty(url))
-                return string.Empty;
+            return await Task.Run(() =>
+            {
+                if (string.IsNullOrEmpty(url))
+                    return string.Empty;
 
-            if (string.IsNullOrEmpty(key))
+                if (string.IsNullOrEmpty(key))
+                    return url;
+
+                //get current query parameters
+                var uri = new Uri(url);
+                var queryParameters = QueryHelpers.ParseQuery(uri.Query)
+                    .SelectMany(parameter => parameter.Value, (parameter, queryValue) => new KeyValuePair<string, string>(parameter.Key, queryValue))
+                    .ToList();
+
+                if (!string.IsNullOrEmpty(value))
+                {
+                    //remove a specific query parameter value if it's passed
+                    queryParameters.RemoveAll(parameter => parameter.Key.Equals(key, StringComparison.InvariantCultureIgnoreCase)
+                        && parameter.Value.Equals(value, StringComparison.InvariantCultureIgnoreCase));
+                }
+                else
+                {
+                    //or remove query parameter by the key
+                    queryParameters.RemoveAll(parameter => parameter.Key.Equals(key, StringComparison.InvariantCultureIgnoreCase));
+                }
+
+                //create new URL without passed query parameters
+                url = $"{uri.GetLeftPart(UriPartial.Path)}{new QueryBuilder(queryParameters).ToQueryString()}{uri.Fragment}";
+
                 return url;
-
-            //get current query parameters
-            var uri = new Uri(url);
-            var queryParameters = QueryHelpers.ParseQuery(uri.Query)
-                .SelectMany(parameter => parameter.Value, (parameter, queryValue) => new KeyValuePair<string, string>(parameter.Key, queryValue))
-                .ToList();
-
-            if (!string.IsNullOrEmpty(value))
-            {
-                //remove a specific query parameter value if it's passed
-                queryParameters.RemoveAll(parameter => parameter.Key.Equals(key, StringComparison.InvariantCultureIgnoreCase)
-                    && parameter.Value.Equals(value, StringComparison.InvariantCultureIgnoreCase));
-            }
-            else
-            {
-                //or remove query parameter by the key
-                queryParameters.RemoveAll(parameter => parameter.Key.Equals(key, StringComparison.InvariantCultureIgnoreCase));
-            }
-
-            //create new URL without passed query parameters
-            url = $"{uri.GetLeftPart(UriPartial.Path)}{new QueryBuilder(queryParameters).ToQueryString()}{uri.Fragment}";
-
-            return url;
+            }, cancellationToken);
         }
 
         /// <summary>
@@ -366,10 +391,11 @@ namespace Nop.Core
         /// </summary>
         /// <typeparam name="T">Returned value type</typeparam>
         /// <param name="name">Query parameter name</param>
-        /// <returns>Query string value</returns>
-        public virtual T QueryString<T>(string name)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the query string value</returns>
+        public virtual async Task<T> QueryStringAsync<T>(string name, CancellationToken cancellationToken)
         {
-            if (!IsRequestAvailable())
+            if (!(await IsRequestAvailableAsync(cancellationToken)))
                 return default(T);
 
             if (StringValues.IsNullOrEmpty(_httpContextAccessor.HttpContext.Request.Query[name]))
@@ -382,13 +408,12 @@ namespace Nop.Core
         /// Restart application domain
         /// </summary>
         /// <param name="makeRedirect">A value indicating whether we should made redirection after restart</param>
-        public virtual void RestartAppDomain(bool makeRedirect = false)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that app domain is restarted</returns>
+        public virtual async Task RestartAppDomainAsync(bool makeRedirect = false, CancellationToken cancellationToken = default(CancellationToken))
         {
-            //the site will be restarted during the next request automatically
-            //_applicationLifetime.StopApplication();
-
             //"touch" web.config to force restart
-            var success = TryWriteWebConfig();
+            var success = await TryWriteWebConfigAsync(cancellationToken);
             if (!success)
             {
                 throw new NopException("nopCommerce needs to be restarted due to a configuration change, but was unable to do so." + Environment.NewLine +
@@ -431,21 +456,27 @@ namespace Nop.Core
         /// <summary>
         /// Gets current HTTP request protocol
         /// </summary>
-        public virtual string CurrentRequestProtocol => IsCurrentConnectionSecured() ? Uri.UriSchemeHttps : Uri.UriSchemeHttp;
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains current HTTP request protocol</returns>
+        public virtual async Task<string> GetCurrentRequestProtocolAsync(CancellationToken cancellationToken)
+        {
+            return await IsCurrentConnectionSecuredAsync(cancellationToken) ? Uri.UriSchemeHttps : Uri.UriSchemeHttp;
+        }
 
         /// <summary>
         /// Gets whether the specified HTTP request URI references the local host.
         /// </summary>
         /// <param name="req">HTTP request</param>
-        /// <returns>True, if HTTP request URI references to the local host</returns>
-        public virtual bool IsLocalRequest(HttpRequest req)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines whether the request is local</returns>
+        public virtual async Task<bool> IsLocalRequestAsync(HttpRequest req, CancellationToken cancellationToken)
         {
             //source: https://stackoverflow.com/a/41242493/7860424
             var connection = req.HttpContext.Connection;
-            if (IsIpAddressSet(connection.RemoteIpAddress))
+            if (await IsIpAddressSetAsync(connection.RemoteIpAddress, cancellationToken))
             {
                 //We have a remote address set up
-                return IsIpAddressSet(connection.LocalIpAddress)
+                return await IsIpAddressSetAsync(connection.LocalIpAddress, cancellationToken)
                     //Is local is same as remote, then we are local
                     ? connection.RemoteIpAddress.Equals(connection.LocalIpAddress)
                     //else we are remote if the remote IP address is not a loopback address
@@ -459,18 +490,22 @@ namespace Nop.Core
         /// Get the raw path and full query of request
         /// </summary>
         /// <param name="request">HTTP request</param>
-        /// <returns>Raw URL</returns>
-        public virtual string GetRawUrl(HttpRequest request)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the raw URL</returns>
+        public virtual async Task<string> GetRawUrlAsync(HttpRequest request, CancellationToken cancellationToken)
         {
-            //first try to get the raw target from request feature
-            //note: value has not been UrlDecoded
-            var rawUrl = request.HttpContext.Features.Get<IHttpRequestFeature>()?.RawTarget;
+            return await Task.Run(() =>
+            {
+                //first try to get the raw target from request feature
+                //note: value has not been UrlDecoded
+                var rawUrl = request.HttpContext.Features.Get<IHttpRequestFeature>()?.RawTarget;
 
-            //or compose raw URL manually
-            if (string.IsNullOrEmpty(rawUrl))
-                rawUrl = $"{request.PathBase}{request.Path}{request.QueryString}";
+                //or compose raw URL manually
+                if (string.IsNullOrEmpty(rawUrl))
+                    rawUrl = $"{request.PathBase}{request.Path}{request.QueryString}";
 
-            return rawUrl;
+                return rawUrl;
+            }, cancellationToken);
         }
 
         #endregion
