@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nop.Core.Domain.Orders;
 using Nop.Core.Plugins;
@@ -20,10 +21,23 @@ namespace Nop.Services.Payments
         ProcessPaymentResult ProcessPayment(ProcessPaymentRequest processPaymentRequest);
 
         /// <summary>
+        /// Process a payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest);
+
+        /// <summary>
         /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
         /// </summary>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
         void PostProcessPayment(PostProcessPaymentRequest postProcessPaymentRequest);
+
+        /// <summary>
+        /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
+        /// </summary>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest);
 
         /// <summary>
         /// Returns a value indicating whether payment method should be hidden during checkout
@@ -47,11 +61,25 @@ namespace Nop.Services.Payments
         CapturePaymentResult Capture(CapturePaymentRequest capturePaymentRequest);
 
         /// <summary>
+        /// Captures payment
+        /// </summary>
+        /// <param name="capturePaymentRequest">Capture payment request</param>
+        /// <returns>Capture payment result</returns>
+        Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest);
+
+        /// <summary>
         /// Refunds a payment
         /// </summary>
         /// <param name="refundPaymentRequest">Request</param>
         /// <returns>Result</returns>
         RefundPaymentResult Refund(RefundPaymentRequest refundPaymentRequest);
+
+        /// <summary>
+        /// Refunds a payment
+        /// </summary>
+        /// <param name="refundPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest);
 
         /// <summary>
         /// Voids a payment
@@ -61,6 +89,13 @@ namespace Nop.Services.Payments
         VoidPaymentResult Void(VoidPaymentRequest voidPaymentRequest);
 
         /// <summary>
+        /// Voids a payment
+        /// </summary>
+        /// <param name="voidPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest);
+
+        /// <summary>
         /// Process recurring payment
         /// </summary>
         /// <param name="processPaymentRequest">Payment info required for an order processing</param>
@@ -68,11 +103,25 @@ namespace Nop.Services.Payments
         ProcessPaymentResult ProcessRecurringPayment(ProcessPaymentRequest processPaymentRequest);
 
         /// <summary>
+        /// Process recurring payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest);
+
+        /// <summary>
         /// Cancels a recurring payment
         /// </summary>
         /// <param name="cancelPaymentRequest">Request</param>
         /// <returns>Result</returns>
         CancelRecurringPaymentResult CancelRecurringPayment(CancelRecurringPaymentRequest cancelPaymentRequest);
+
+        /// <summary>
+        /// Cancels a recurring payment
+        /// </summary>
+        /// <param name="cancelPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest);
 
         /// <summary>
         /// Gets a value indicating whether customers can complete a payment after order is placed but not completed (for redirection payment methods)

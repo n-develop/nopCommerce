@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Nop.Core;
@@ -24,6 +25,7 @@ using Nop.Services.Payments;
 using Nop.Services.Tasks;
 using Nop.Web.Framework.UI;
 using SquareModel = Square.Connect.Model;
+using Task = System.Threading.Tasks.Task;
 
 namespace Nop.Plugin.Payments.Square
 {
@@ -155,6 +157,57 @@ namespace Nop.Plugin.Payments.Square
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Process a payment
+        /// </summary>
+        /// <param name="paymentRequest">Payment info required for an order processing</param>
+        /// <param name="isRecurringPayment">Whether it is a recurring payment</param>
+        /// <returns>Process payment result</returns>
+        private async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest paymentRequest, bool isRecurringPayment)
+        {
+            //create charge request
+            var chargeRequest = await CreateChargeRequestAsync(paymentRequest, isRecurringPayment);
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //charge transaction
+                var (transaction, error) = _squarePaymentManager.Charge(chargeRequest);
+                if (transaction == null)
+                    throw new NopException(error);
+
+                //get transaction tender
+                var tender = transaction.Tenders?.FirstOrDefault();
+                if (tender == null)
+                    throw new NopException("There are no tenders (methods of payment) used to pay in the transaction");
+
+                //get transaction details
+                var transactionStatus = tender.CardDetails?.Status;
+                var transactionResult =
+                    $"Transaction was processed by using {transaction.Product}. Status is {transactionStatus}";
+
+                //return result
+                var result = new ProcessPaymentResult
+                {
+                    NewPaymentStatus = GetPaymentStatus(transactionStatus)
+                };
+
+                if (_squarePaymentSettings.TransactionMode == TransactionMode.Authorize)
+                {
+                    result.AuthorizationTransactionId = transaction.Id;
+                    result.AuthorizationTransactionResult = transactionResult;
+                }
+
+                if (_squarePaymentSettings.TransactionMode == TransactionMode.Charge)
+                {
+                    result.CaptureTransactionId = transaction.Id;
+                    result.CaptureTransactionResult = transactionResult;
+                }
+
+                return result;
+            });
         }
 
         /// <summary>
@@ -325,6 +378,194 @@ namespace Nop.Plugin.Payments.Square
             return chargeRequest;
         }
 
+        /// <summary>
+        /// Create request parameters to charge transaction
+        /// </summary>
+        /// <param name="paymentRequest">Payment request parameters</param>
+        /// <param name="isRecurringPayment">Whether it is a recurring payment</param>
+        /// <returns>Charge request parameters</returns>
+        private async Task<ExtendedChargeRequest> CreateChargeRequestAsync(ProcessPaymentRequest paymentRequest, bool isRecurringPayment)
+        {
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //get customer
+                var customer = _customerService.GetCustomerById(paymentRequest.CustomerId);
+                if (customer == null)
+                    throw new NopException("Customer cannot be loaded");
+
+                //get the primary store currency
+                var currency = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId);
+                if (currency == null)
+                    throw new NopException("Primary store currency cannot be loaded");
+
+                //whether the currency is supported by the Square
+                if (!Enum.TryParse(currency.CurrencyCode, out SquareModel.Money.CurrencyEnum moneyCurrency))
+                    throw new NopException($"The {currency.CurrencyCode} currency is not supported by the Square");
+
+                //check customer's billing address, shipping address and email, 
+                Func<Address, SquareModel.Address> createAddress = (address) => address == null
+                    ? null
+                    : new SquareModel.Address
+                    (
+                        AddressLine1: address.Address1,
+                        AddressLine2: address.Address2,
+                        AdministrativeDistrictLevel1: address.StateProvince?.Abbreviation,
+                        AdministrativeDistrictLevel2: address.County,
+                        Country: Enum.TryParse(address.Country?.TwoLetterIsoCode,
+                            out SquareModel.Address.CountryEnum countryCode)
+                            ? (SquareModel.Address.CountryEnum?) countryCode
+                            : null,
+                        FirstName: address.FirstName,
+                        LastName: address.LastName,
+                        Locality: address.City,
+                        PostalCode: address.ZipPostalCode
+                    );
+                var billingAddress = createAddress(customer.BillingAddress);
+                var shippingAddress = billingAddress == null ? createAddress(customer.ShippingAddress) : null;
+                var email = customer.BillingAddress != null
+                    ? customer.BillingAddress.Email
+                    : customer.ShippingAddress?.Email;
+
+                //the transaction is ineligible for chargeback protection if they are not provided
+                if ((billingAddress == null && shippingAddress == null) || string.IsNullOrEmpty(email))
+                    _logger.Warning(
+                        "Square payment warning: Address or email is not provided, so the transaction is ineligible for chargeback protection",
+                        customer: customer);
+
+                //the amount of money, in the smallest denomination of the currency indicated by currency. For example, when currency is USD, amount is in cents;
+                //most currencies consist of 100 units of smaller denomination, so we multiply the total by 100
+                var orderTotal = (int) (paymentRequest.OrderTotal * 100);
+                var amountMoney = new SquareModel.Money(Amount: orderTotal, Currency: moneyCurrency);
+
+                //create common charge request parameters
+                var chargeRequest = new ExtendedChargeRequest
+                (
+                    AmountMoney: amountMoney,
+                    BillingAddress: billingAddress,
+                    BuyerEmailAddress: email,
+                    DelayCapture: _squarePaymentSettings.TransactionMode == TransactionMode.Authorize,
+                    IdempotencyKey: Guid.NewGuid().ToString(),
+                    IntegrationId: !string.IsNullOrEmpty(SquarePaymentDefaults.IntegrationId)
+                        ? SquarePaymentDefaults.IntegrationId
+                        : null,
+                    Note: string.Format(SquarePaymentDefaults.PaymentNote, paymentRequest.OrderGuid),
+                    ReferenceId: paymentRequest.OrderGuid.ToString(),
+                    ShippingAddress: shippingAddress
+                );
+
+                //try to get previously stored card details
+                var storedCardKey = _localizationService.GetResource("Plugins.Payments.Square.Fields.StoredCard.Key");
+                if (paymentRequest.CustomValues.TryGetValue(storedCardKey, out object storedCardId) &&
+                    !storedCardId.ToString().Equals("0"))
+                {
+                    //check whether customer exists
+                    var customerId = customer.GetAttribute<string>(SquarePaymentDefaults.CustomerIdAttribute);
+                    var squareCustomer = _squarePaymentManager.GetCustomer(customerId);
+                    if (squareCustomer == null)
+                        throw new NopException("Failed to retrieve customer");
+
+                    //set 'card on file' to charge
+                    chargeRequest.CustomerId = squareCustomer.Id;
+                    chargeRequest.CustomerCardId = storedCardId.ToString();
+                    return chargeRequest;
+                }
+
+                //or try to get the card nonce
+                var cardNonceKey = _localizationService.GetResource("Plugins.Payments.Square.Fields.CardNonce.Key");
+                if (!paymentRequest.CustomValues.TryGetValue(cardNonceKey, out object cardNonce) ||
+                    string.IsNullOrEmpty(cardNonce?.ToString()))
+                    throw new NopException("Failed to get the card nonce");
+
+                //remove the card nonce from payment custom values, since it is no longer needed
+                paymentRequest.CustomValues.Remove(cardNonceKey);
+
+                //whether to save card details for the future purchasing
+                var saveCardKey = _localizationService.GetResource("Plugins.Payments.Square.Fields.SaveCard.Key");
+                if (paymentRequest.CustomValues.TryGetValue(saveCardKey, out object saveCardValue) &&
+                    saveCardValue is bool saveCard && saveCard && !customer.IsGuest())
+                {
+                    //remove the value from payment custom values, since it is no longer needed
+                    paymentRequest.CustomValues.Remove(saveCardKey);
+
+                    try
+                    {
+                        //check whether customer exists
+                        var customerId = customer.GetAttribute<string>(SquarePaymentDefaults.CustomerIdAttribute);
+                        var squareCustomer = _squarePaymentManager.GetCustomer(customerId);
+
+                        if (squareCustomer == null)
+                        {
+                            //try to create the new one, if not exists
+                            var customerRequest = new SquareModel.CreateCustomerRequest
+                            (
+                                EmailAddress: customer.Email,
+                                Nickname: customer.Username,
+                                GivenName: customer.GetAttribute<string>(NopCustomerDefaults.FirstNameAttribute),
+                                FamilyName: customer.GetAttribute<string>(NopCustomerDefaults.LastNameAttribute),
+                                PhoneNumber: customer.GetAttribute<string>(NopCustomerDefaults.PhoneAttribute),
+                                CompanyName: customer.GetAttribute<string>(NopCustomerDefaults.CompanyAttribute),
+                                ReferenceId: customer.CustomerGuid.ToString()
+                            );
+                            squareCustomer = _squarePaymentManager.CreateCustomer(customerRequest);
+                            if (squareCustomer == null)
+                                throw new NopException("Failed to create customer. Error details in the log");
+
+                            //save customer identifier as generic attribute
+                            _genericAttributeService.SaveAttribute(customer, SquarePaymentDefaults.CustomerIdAttribute,
+                                squareCustomer.Id);
+                        }
+
+                        //create request parameters to create the new card
+                        var cardRequest = new SquareModel.CreateCustomerCardRequest
+                        (
+                            BillingAddress: chargeRequest.BillingAddress ?? chargeRequest.ShippingAddress,
+                            CardNonce: cardNonce.ToString()
+                        );
+
+                        //set postal code
+                        var postalCodeKey =
+                            _localizationService.GetResource("Plugins.Payments.Square.Fields.PostalCode.Key");
+                        if (paymentRequest.CustomValues.TryGetValue(postalCodeKey, out object postalCode) &&
+                            !string.IsNullOrEmpty(postalCode.ToString()))
+                        {
+                            //remove the value from payment custom values, since it is no longer needed
+                            paymentRequest.CustomValues.Remove(postalCodeKey);
+
+                            cardRequest.BillingAddress = cardRequest.BillingAddress ?? new SquareModel.Address();
+                            cardRequest.BillingAddress.PostalCode = postalCode.ToString();
+                        }
+
+                        //try to create card
+                        var card = _squarePaymentManager.CreateCustomerCard(squareCustomer.Id, cardRequest);
+                        if (card == null)
+                            throw new NopException("Failed to create card. Error details in the log");
+
+                        //save card identifier to payment custom values for further purchasing
+                        if (isRecurringPayment)
+                            paymentRequest.CustomValues.Add(storedCardKey, card.Id);
+
+                        //set 'card on file' to charge
+                        chargeRequest.CustomerId = squareCustomer.Id;
+                        chargeRequest.CustomerCardId = card.Id;
+                        return chargeRequest;
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.Warning(exception.Message, exception, customer);
+                        if (isRecurringPayment)
+                            throw new NopException("For recurring payments you need to save the card details");
+                    }
+                }
+                else if (isRecurringPayment)
+                    throw new NopException("For recurring payments you need to save the card details");
+
+                //set 'card nonce' to charge
+                chargeRequest.CardNonce = cardNonce.ToString();
+                return chargeRequest;
+            });
+        }
+
         #endregion
 
         #region Methods
@@ -343,12 +584,35 @@ namespace Nop.Plugin.Payments.Square
         }
 
         /// <summary>
+        /// Process a payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            if (processPaymentRequest == null)
+                throw new ArgumentException(nameof(processPaymentRequest));
+
+            return await ProcessPaymentAsync(processPaymentRequest, false);
+        }
+
+        /// <summary>
         /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
         /// </summary>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
         public void PostProcessPayment(PostProcessPaymentRequest postProcessPaymentRequest)
         {
             //do nothing
+        }
+
+        /// <summary>
+        /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
+        /// </summary>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        public Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //do nothing
+            return Task.Run(() => { });
         }
 
         /// <summary>
@@ -399,6 +663,34 @@ namespace Nop.Plugin.Payments.Square
                 NewPaymentStatus = PaymentStatus.Paid,
                 CaptureTransactionId = transactionId
             };
+        }
+
+        /// <summary>
+        /// Captures payment
+        /// </summary>
+        /// <param name="capturePaymentRequest">Capture payment request</param>
+        /// <returns>Capture payment result</returns>
+        public async Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest)
+        {
+            if (capturePaymentRequest == null)
+                throw new ArgumentException(nameof(capturePaymentRequest));
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //capture transaction
+                var transactionId = capturePaymentRequest.Order.AuthorizationTransactionId;
+                var (successfullyCaptured, error) = _squarePaymentManager.CaptureTransaction(transactionId);
+                if (!successfullyCaptured)
+                    throw new NopException(error);
+
+                //successfully captured
+                return new CapturePaymentResult
+                {
+                    NewPaymentStatus = PaymentStatus.Paid,
+                    CaptureTransactionId = transactionId
+                };
+            });
         }
 
         /// <summary>
@@ -473,6 +765,84 @@ namespace Nop.Plugin.Payments.Square
         }
 
         /// <summary>
+        /// Refunds a payment
+        /// </summary>
+        /// <param name="refundPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest)
+        {
+            if (refundPaymentRequest == null)
+                throw new ArgumentException(nameof(refundPaymentRequest));
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //get the primary store currency
+                var currency = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId);
+                if (currency == null)
+                    throw new NopException("Primary store currency cannot be loaded");
+
+                //whether the currency is supported by the Square
+                if (!Enum.TryParse(currency.CurrencyCode, out SquareModel.Money.CurrencyEnum moneyCurrency))
+                    throw new NopException($"The {currency.CurrencyCode} currency is not supported by the service");
+
+                //the amount of money in the smallest denomination of the currency indicated by currency. For example, when currency is USD, amount is in cents;
+                //most currencies consist of 100 units of smaller denomination, so we multiply the total by 100
+                var orderTotal = (int) (refundPaymentRequest.AmountToRefund * 100);
+                var amountMoney = new SquareModel.Money(Amount: orderTotal, Currency: moneyCurrency);
+
+                //first try to get the transaction
+                var transactionId = refundPaymentRequest.Order.CaptureTransactionId;
+                var (transaction, transactionError) = _squarePaymentManager.GetTransaction(transactionId);
+                if (transaction == null)
+                    throw new NopException(transactionError);
+
+                //get tender
+                var tender = transaction.Tenders?.FirstOrDefault();
+                if (tender == null)
+                    throw new NopException("There are no tenders (methods of payment) used to pay in the transaction");
+
+                //create refund of the transaction
+                var refundRequest = new SquareModel.CreateRefundRequest
+                (
+                    AmountMoney: amountMoney,
+                    IdempotencyKey: Guid.NewGuid().ToString(),
+                    TenderId: tender.Id
+                );
+                var (createdRefund, refundError) = _squarePaymentManager.CreateRefund(transactionId, refundRequest);
+                if (createdRefund == null)
+                    throw new NopException(refundError);
+
+                //if refund status is 'pending', try to refund once more with the same request parameters
+                if (createdRefund.Status == SquareModel.Refund.StatusEnum.PENDING)
+                {
+                    (createdRefund, refundError) = _squarePaymentManager.CreateRefund(transactionId, refundRequest);
+                    if (createdRefund == null)
+                        throw new NopException(refundError);
+                }
+
+                //check whether refund is approved
+                if (createdRefund.Status != SquareModel.Refund.StatusEnum.APPROVED)
+                {
+                    //change error notification to warning one (for the pending status)
+                    if (createdRefund.Status == SquareModel.Refund.StatusEnum.PENDING)
+                        _pageHeadBuilder.AddCssFileParts(ResourceLocation.Head,
+                            @"~/Plugins/Payments.Square/Content/styles.css", null);
+
+                    return new RefundPaymentResult {Errors = new[] {$"Refund is {createdRefund.Status}"}.ToList()};
+                }
+
+                //successfully refunded
+                return new RefundPaymentResult
+                {
+                    NewPaymentStatus = refundPaymentRequest.IsPartialRefund
+                        ? PaymentStatus.PartiallyRefunded
+                        : PaymentStatus.Refunded
+                };
+            });
+        }
+
+        /// <summary>
         /// Voids a payment
         /// </summary>
         /// <param name="voidPaymentRequest">Request</param>
@@ -496,6 +866,33 @@ namespace Nop.Plugin.Payments.Square
         }
 
         /// <summary>
+        /// Voids a payment
+        /// </summary>
+        /// <param name="voidPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest)
+        {
+            if (voidPaymentRequest == null)
+                throw new ArgumentException(nameof(voidPaymentRequest));
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //void transaction
+                var transactionId = voidPaymentRequest.Order.AuthorizationTransactionId;
+                var (successfullyVoided, error) = _squarePaymentManager.VoidTransaction(transactionId);
+                if (!successfullyVoided)
+                    throw new NopException(error);
+
+                //successfully voided
+                return new VoidPaymentResult
+                {
+                    NewPaymentStatus = PaymentStatus.Voided
+                };
+            });
+        }
+
+        /// <summary>
         /// Process recurring payment
         /// </summary>
         /// <param name="processPaymentRequest">Payment info required for an order processing</param>
@@ -506,6 +903,19 @@ namespace Nop.Plugin.Payments.Square
                 throw new ArgumentException(nameof(processPaymentRequest));
 
             return ProcessPayment(processPaymentRequest, true);
+        }
+
+        /// <summary>
+        /// Process recurring payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            if (processPaymentRequest == null)
+                throw new ArgumentException(nameof(processPaymentRequest));
+
+            return await ProcessPaymentAsync(processPaymentRequest, true);
         }
 
         /// <summary>
@@ -520,6 +930,19 @@ namespace Nop.Plugin.Payments.Square
 
             //always success
             return new CancelRecurringPaymentResult();
+        }
+
+        /// <summary>
+        /// Cancels a recurring payment
+        /// </summary>
+        /// <param name="cancelPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest)
+        {
+            if (cancelPaymentRequest == null)
+                throw new ArgumentException(nameof(cancelPaymentRequest));
+
+            return await Task.Run(() => new CancelRecurringPaymentResult());
         }
 
         /// <summary>

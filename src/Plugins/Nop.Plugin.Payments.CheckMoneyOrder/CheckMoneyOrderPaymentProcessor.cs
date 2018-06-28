@@ -57,12 +57,32 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
         }
 
         /// <summary>
+        /// Process a payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            return await Task.Run(() => new ProcessPaymentResult());
+        }
+
+        /// <summary>
         /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
         /// </summary>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
         public void PostProcessPayment(PostProcessPaymentRequest postProcessPaymentRequest)
         {
             //nothing
+        }
+
+        /// <summary>
+        /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
+        /// </summary>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        public Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //nothing
+            return Task.Run(() => { });
         }
 
         /// <summary>
@@ -104,6 +124,16 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
         }
 
         /// <summary>
+        /// Captures payment
+        /// </summary>
+        /// <param name="capturePaymentRequest">Capture payment request</param>
+        /// <returns>Capture payment result</returns>
+        public async Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest)
+        {
+            return await Task.Run(() => new CapturePaymentResult { Errors = new[] { "Capture method not supported" } });
+        }
+
+        /// <summary>
         /// Refunds a payment
         /// </summary>
         /// <param name="refundPaymentRequest">Request</param>
@@ -111,6 +141,16 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
         public RefundPaymentResult Refund(RefundPaymentRequest refundPaymentRequest)
         {
             return new RefundPaymentResult { Errors = new[] { "Refund method not supported" } };
+        }
+
+        /// <summary>
+        /// Refunds a payment
+        /// </summary>
+        /// <param name="refundPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest)
+        {
+            return await Task.Run(() => new RefundPaymentResult { Errors = new[] { "Refund method not supported" } });
         }
 
         /// <summary>
@@ -124,6 +164,16 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
         }
 
         /// <summary>
+        /// Voids a payment
+        /// </summary>
+        /// <param name="voidPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest)
+        {
+            return await Task.Run(() => new VoidPaymentResult { Errors = new[] { "Void method not supported" } });
+        }
+
+        /// <summary>
         /// Process recurring payment
         /// </summary>
         /// <param name="processPaymentRequest">Payment info required for an order processing</param>
@@ -134,6 +184,16 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
         }
 
         /// <summary>
+        /// Process recurring payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            return await Task.Run(() => new ProcessPaymentResult { Errors = new[] { "Recurring payment not supported" } });
+        }
+
+        /// <summary>
         /// Cancels a recurring payment
         /// </summary>
         /// <param name="cancelPaymentRequest">Request</param>
@@ -141,6 +201,16 @@ namespace Nop.Plugin.Payments.CheckMoneyOrder
         public CancelRecurringPaymentResult CancelRecurringPayment(CancelRecurringPaymentRequest cancelPaymentRequest)
         {
             return new CancelRecurringPaymentResult { Errors = new[] { "Recurring payment not supported" } };
+        }
+
+        /// <summary>
+        /// Cancels a recurring payment
+        /// </summary>
+        /// <param name="cancelPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest)
+        {
+            return await Task.Run(() => new CancelRecurringPaymentResult { Errors = new[] { "Recurring payment not supported" } });
         }
 
         /// <summary>

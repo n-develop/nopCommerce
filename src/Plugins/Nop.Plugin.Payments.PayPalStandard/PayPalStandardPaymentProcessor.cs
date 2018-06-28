@@ -234,6 +234,184 @@ namespace Nop.Plugin.Payments.PayPalStandard
         }
 
         /// <summary>
+        /// Create common query parameters for the request
+        /// </summary>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Created query parameters</returns>
+        private async Task<IDictionary<string, string>> CreateQueryParametersAsync(PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //get store location
+                var storeLocation = _webHelper.GetStoreLocation();
+
+                //create query parameters
+                return new Dictionary<string, string>
+                {
+                    //PayPal ID or an email address associated with your PayPal account
+                    ["business"] = _paypalStandardPaymentSettings.BusinessEmail,
+
+                    //the character set and character encoding
+                    ["charset"] = "utf-8",
+
+                    //set return method to "2" (the customer redirected to the return URL by using the POST method, and all payment variables are included)
+                    ["rm"] = "2",
+
+                    ["bn"] = PayPalHelper.NopCommercePartnerCode,
+                    ["currency_code"] = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)
+                        ?.CurrencyCode,
+
+                    //order identifier
+                    ["invoice"] = postProcessPaymentRequest.Order.CustomOrderNumber,
+                    ["custom"] = postProcessPaymentRequest.Order.OrderGuid.ToString(),
+
+                    //PDT, IPN and cancel URL
+                    ["return"] = $"{storeLocation}Plugins/PaymentPayPalStandard/PDTHandler",
+                    ["notify_url"] = $"{storeLocation}Plugins/PaymentPayPalStandard/IPNHandler",
+                    ["cancel_return"] = $"{storeLocation}Plugins/PaymentPayPalStandard/CancelOrder",
+
+                    //shipping address, if exists
+                    ["no_shipping"] =
+                        postProcessPaymentRequest.Order.ShippingStatus == ShippingStatus.ShippingNotRequired
+                            ? "1"
+                            : "2",
+                    ["address_override"] =
+                        postProcessPaymentRequest.Order.ShippingStatus == ShippingStatus.ShippingNotRequired
+                            ? "0"
+                            : "1",
+                    ["first_name"] = postProcessPaymentRequest.Order.ShippingAddress?.FirstName,
+                    ["last_name"] = postProcessPaymentRequest.Order.ShippingAddress?.LastName,
+                    ["address1"] = postProcessPaymentRequest.Order.ShippingAddress?.Address1,
+                    ["address2"] = postProcessPaymentRequest.Order.ShippingAddress?.Address2,
+                    ["city"] = postProcessPaymentRequest.Order.ShippingAddress?.City,
+                    ["state"] = postProcessPaymentRequest.Order.ShippingAddress?.StateProvince?.Abbreviation,
+                    ["country"] = postProcessPaymentRequest.Order.ShippingAddress?.Country?.TwoLetterIsoCode,
+                    ["zip"] = postProcessPaymentRequest.Order.ShippingAddress?.ZipPostalCode,
+                    ["email"] = postProcessPaymentRequest.Order.ShippingAddress?.Email
+                };
+            });
+        }
+
+        /// <summary>
+        /// Add order items to the request query parameters
+        /// </summary>
+        /// <param name="parameters">Query parameters</param>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        private async Task AddItemsParametersAsync(IDictionary<string, string> parameters, PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //upload order items
+                parameters.Add("cmd", "_cart");
+                parameters.Add("upload", "1");
+
+                var cartTotal = decimal.Zero;
+                var roundedCartTotal = decimal.Zero;
+                var itemCount = 1;
+
+                //add shopping cart items
+                foreach (var item in postProcessPaymentRequest.Order.OrderItems)
+                {
+                    var roundedItemPrice = Math.Round(item.UnitPriceExclTax, 2);
+
+                    //add query parameters
+                    parameters.Add($"item_name_{itemCount}", item.Product.Name);
+                    parameters.Add($"amount_{itemCount}",
+                        roundedItemPrice.ToString("0.00", CultureInfo.InvariantCulture));
+                    parameters.Add($"quantity_{itemCount}", item.Quantity.ToString());
+
+                    cartTotal += item.PriceExclTax;
+                    roundedCartTotal += roundedItemPrice * item.Quantity;
+                    itemCount++;
+                }
+
+                //add checkout attributes as order items
+                var checkoutAttributeValues =
+                    _checkoutAttributeParser.ParseCheckoutAttributeValues(postProcessPaymentRequest.Order
+                        .CheckoutAttributesXml);
+                foreach (var attributeValue in checkoutAttributeValues)
+                {
+                    var attributePrice = _taxService.GetCheckoutAttributePrice(attributeValue, false,
+                        postProcessPaymentRequest.Order.Customer);
+                    var roundedAttributePrice = Math.Round(attributePrice, 2);
+
+                    //add query parameters
+                    if (attributeValue.CheckoutAttribute != null)
+                    {
+                        parameters.Add($"item_name_{itemCount}", attributeValue.CheckoutAttribute.Name);
+                        parameters.Add($"amount_{itemCount}",
+                            roundedAttributePrice.ToString("0.00", CultureInfo.InvariantCulture));
+                        parameters.Add($"quantity_{itemCount}", "1");
+
+                        cartTotal += attributePrice;
+                        roundedCartTotal += roundedAttributePrice;
+                        itemCount++;
+                    }
+                }
+
+                //add shipping fee as a separate order item, if it has price
+                var roundedShippingPrice = Math.Round(postProcessPaymentRequest.Order.OrderShippingExclTax, 2);
+                if (roundedShippingPrice > decimal.Zero)
+                {
+                    parameters.Add($"item_name_{itemCount}", "Shipping fee");
+                    parameters.Add($"amount_{itemCount}",
+                        roundedShippingPrice.ToString("0.00", CultureInfo.InvariantCulture));
+                    parameters.Add($"quantity_{itemCount}", "1");
+
+                    cartTotal += postProcessPaymentRequest.Order.OrderShippingExclTax;
+                    roundedCartTotal += roundedShippingPrice;
+                    itemCount++;
+                }
+
+                //add payment method additional fee as a separate order item, if it has price
+                var roundedPaymentMethodPrice =
+                    Math.Round(postProcessPaymentRequest.Order.PaymentMethodAdditionalFeeExclTax, 2);
+                if (roundedPaymentMethodPrice > decimal.Zero)
+                {
+                    parameters.Add($"item_name_{itemCount}", "Payment method fee");
+                    parameters.Add($"amount_{itemCount}",
+                        roundedPaymentMethodPrice.ToString("0.00", CultureInfo.InvariantCulture));
+                    parameters.Add($"quantity_{itemCount}", "1");
+
+                    cartTotal += postProcessPaymentRequest.Order.PaymentMethodAdditionalFeeExclTax;
+                    roundedCartTotal += roundedPaymentMethodPrice;
+                    itemCount++;
+                }
+
+                //add tax as a separate order item, if it has positive amount
+                var roundedTaxAmount = Math.Round(postProcessPaymentRequest.Order.OrderTax, 2);
+                if (roundedTaxAmount > decimal.Zero)
+                {
+                    parameters.Add($"item_name_{itemCount}", "Tax amount");
+                    parameters.Add($"amount_{itemCount}",
+                        roundedTaxAmount.ToString("0.00", CultureInfo.InvariantCulture));
+                    parameters.Add($"quantity_{itemCount}", "1");
+
+                    cartTotal += postProcessPaymentRequest.Order.OrderTax;
+                    roundedCartTotal += roundedTaxAmount;
+                    itemCount++;
+                }
+
+                if (cartTotal > postProcessPaymentRequest.Order.OrderTotal)
+                {
+                    //get the difference between what the order total is and what it should be and use that as the "discount"
+                    var discountTotal = Math.Round(cartTotal - postProcessPaymentRequest.Order.OrderTotal, 2);
+                    roundedCartTotal -= discountTotal;
+
+                    //gift card or rewarded point amount applied to cart in nopCommerce - shows in PayPal as "discount"
+                    parameters.Add("discount_amount_cart",
+                        discountTotal.ToString("0.00", CultureInfo.InvariantCulture));
+                }
+
+                //save order total that actually sent to PayPal (used for PDT order total validation)
+                _genericAttributeService.SaveAttribute(postProcessPaymentRequest.Order,
+                    PayPalHelper.OrderTotalSentToPayPal, roundedCartTotal);
+            });
+        }
+
+        /// <summary>
         /// Add order items to the request query parameters
         /// </summary>
         /// <param name="parameters">Query parameters</param>
@@ -354,6 +532,30 @@ namespace Nop.Plugin.Payments.PayPalStandard
             _genericAttributeService.SaveAttribute(postProcessPaymentRequest.Order, PayPalHelper.OrderTotalSentToPayPal, roundedOrderTotal);
         }
 
+        /// <summary>
+        /// Add order total to the request query parameters
+        /// </summary>
+        /// <param name="parameters">Query parameters</param>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        private async Task AddOrderTotalParametersAsync(IDictionary<string, string> parameters,
+            PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //round order total
+            var roundedOrderTotal = Math.Round(postProcessPaymentRequest.Order.OrderTotal, 2);
+
+            parameters.Add("cmd", "_xclick");
+            parameters.Add("item_name", $"Order Number {postProcessPaymentRequest.Order.CustomOrderNumber}");
+            parameters.Add("amount", roundedOrderTotal.ToString("0.00", CultureInfo.InvariantCulture));
+
+            //TODO Remove Task.Run(()=>{})
+            await Task.Run(() =>
+            {
+                //save order total that actually sent to PayPal (used for PDT order total validation)
+                _genericAttributeService.SaveAttribute(postProcessPaymentRequest.Order,
+                    PayPalHelper.OrderTotalSentToPayPal, roundedOrderTotal);
+            });
+        }
+
         #endregion
 
         #region Methods
@@ -366,6 +568,16 @@ namespace Nop.Plugin.Payments.PayPalStandard
         public ProcessPaymentResult ProcessPayment(ProcessPaymentRequest processPaymentRequest)
         {
             return new ProcessPaymentResult();
+        }
+
+        /// <summary>
+        /// Process a payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            return await Task.Run(() => new ProcessPaymentResult());
         }
 
         /// <summary>
@@ -399,6 +611,46 @@ namespace Nop.Plugin.Payments.PayPalStandard
             
             //or add only an order total query parameters to the request
             AddOrderTotalParameters(queryParameters, postProcessPaymentRequest);
+
+            //remove null values from parameters
+            queryParameters = queryParameters.Where(parameter => !string.IsNullOrEmpty(parameter.Value))
+                .ToDictionary(parameter => parameter.Key, parameter => parameter.Value);
+
+            var url = QueryHelpers.AddQueryString(GetPaypalUrl(), queryParameters);
+            _httpContextAccessor.HttpContext.Response.Redirect(url);
+        }
+
+        /// <summary>
+        /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
+        /// </summary>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        public async Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //create common query parameters for the request
+            var queryParameters = await CreateQueryParametersAsync(postProcessPaymentRequest);
+
+            //whether to include order items in a transaction
+            if (_paypalStandardPaymentSettings.PassProductNamesAndTotals)
+            {
+                //add order items query parameters to the request
+                var parameters = new Dictionary<string, string>(queryParameters);
+                await AddItemsParametersAsync(parameters, postProcessPaymentRequest);
+
+                //remove null values from parameters
+                parameters = parameters.Where(parameter => !string.IsNullOrEmpty(parameter.Value))
+                    .ToDictionary(parameter => parameter.Key, parameter => parameter.Value);
+
+                //ensure redirect URL doesn't exceed 2K chars to avoid "too long URL" exception
+                var redirectUrl = QueryHelpers.AddQueryString(GetPaypalUrl(), parameters);
+                if (redirectUrl.Length <= 2048)
+                {
+                    _httpContextAccessor.HttpContext.Response.Redirect(redirectUrl);
+                    return;
+                }
+            }
+            
+            //or add only an order total query parameters to the request
+            await AddOrderTotalParametersAsync(queryParameters, postProcessPaymentRequest);
 
             //remove null values from parameters
             queryParameters = queryParameters.Where(parameter => !string.IsNullOrEmpty(parameter.Value))
@@ -443,6 +695,16 @@ namespace Nop.Plugin.Payments.PayPalStandard
         }
 
         /// <summary>
+        /// Captures payment
+        /// </summary>
+        /// <param name="capturePaymentRequest">Capture payment request</param>
+        /// <returns>Capture payment result</returns>
+        public async Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest)
+        {
+            return await Task.Run(() => new CapturePaymentResult { Errors = new[] { "Capture method not supported" } });
+        }
+
+        /// <summary>
         /// Refunds a payment
         /// </summary>
         /// <param name="refundPaymentRequest">Request</param>
@@ -450,6 +712,16 @@ namespace Nop.Plugin.Payments.PayPalStandard
         public RefundPaymentResult Refund(RefundPaymentRequest refundPaymentRequest)
         {
             return new RefundPaymentResult { Errors = new[] { "Refund method not supported" } };
+        }
+
+        /// <summary>
+        /// Refunds a payment
+        /// </summary>
+        /// <param name="refundPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest)
+        {
+            return await Task.Run(() => new RefundPaymentResult { Errors = new[] { "Refund method not supported" } });
         }
 
         /// <summary>
@@ -463,6 +735,16 @@ namespace Nop.Plugin.Payments.PayPalStandard
         }
 
         /// <summary>
+        /// Voids a payment
+        /// </summary>
+        /// <param name="voidPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest)
+        {
+            return await Task.Run(() => new VoidPaymentResult { Errors = new[] { "Void method not supported" } });
+        }
+
+        /// <summary>
         /// Process recurring payment
         /// </summary>
         /// <param name="processPaymentRequest">Payment info required for an order processing</param>
@@ -473,6 +755,16 @@ namespace Nop.Plugin.Payments.PayPalStandard
         }
 
         /// <summary>
+        /// Process recurring payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            return await Task.Run(() => new ProcessPaymentResult { Errors = new[] { "Recurring payment not supported" } });
+        }
+
+        /// <summary>
         /// Cancels a recurring payment
         /// </summary>
         /// <param name="cancelPaymentRequest">Request</param>
@@ -480,6 +772,16 @@ namespace Nop.Plugin.Payments.PayPalStandard
         public CancelRecurringPaymentResult CancelRecurringPayment(CancelRecurringPaymentRequest cancelPaymentRequest)
         {
             return new CancelRecurringPaymentResult { Errors = new[] { "Recurring payment not supported" } };
+        }
+
+        /// <summary>
+        /// Cancels a recurring payment
+        /// </summary>
+        /// <param name="cancelPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest)
+        {
+            return await Task.Run(() => new CancelRecurringPaymentResult { Errors = new[] { "Recurring payment not supported" } });
         }
 
         /// <summary>

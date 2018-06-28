@@ -81,12 +81,55 @@ namespace Nop.Plugin.Payments.Manual
         }
 
         /// <summary>
+        /// Process a payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            return await Task.Run(() =>
+            {
+                var result = new ProcessPaymentResult
+                {
+                    AllowStoringCreditCardNumber = true
+                };
+                switch (_manualPaymentSettings.TransactMode)
+                {
+                    case TransactMode.Pending:
+                        result.NewPaymentStatus = PaymentStatus.Pending;
+                        break;
+                    case TransactMode.Authorize:
+                        result.NewPaymentStatus = PaymentStatus.Authorized;
+                        break;
+                    case TransactMode.AuthorizeAndCapture:
+                        result.NewPaymentStatus = PaymentStatus.Paid;
+                        break;
+                    default:
+                        result.AddError("Not supported transaction type");
+                        break;
+                }
+
+                return result;
+            });
+        }
+
+        /// <summary>
         /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
         /// </summary>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
         public void PostProcessPayment(PostProcessPaymentRequest postProcessPaymentRequest)
         {
             //nothing
+        }
+
+        /// <summary>
+        /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
+        /// </summary>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        public Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //nothing
+            return Task.Run(() => { });
         }
 
         /// <summary>
@@ -123,6 +166,16 @@ namespace Nop.Plugin.Payments.Manual
         }
 
         /// <summary>
+        /// Captures payment
+        /// </summary>
+        /// <param name="capturePaymentRequest">Capture payment request</param>
+        /// <returns>Capture payment result</returns>
+        public async Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest)
+        {
+            return await Task.Run(() => new CapturePaymentResult { Errors = new[] { "Capture method not supported" } });
+        }
+
+        /// <summary>
         /// Refunds a payment
         /// </summary>
         /// <param name="refundPaymentRequest">Request</param>
@@ -133,6 +186,16 @@ namespace Nop.Plugin.Payments.Manual
         }
 
         /// <summary>
+        /// Refunds a payment
+        /// </summary>
+        /// <param name="refundPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest)
+        {
+            return await Task.Run(() => new RefundPaymentResult { Errors = new[] { "Refund method not supported" } });
+        }
+
+        /// <summary>
         /// Voids a payment
         /// </summary>
         /// <param name="voidPaymentRequest">Request</param>
@@ -140,6 +203,16 @@ namespace Nop.Plugin.Payments.Manual
         public VoidPaymentResult Void(VoidPaymentRequest voidPaymentRequest)
         {
             return new VoidPaymentResult { Errors = new[] { "Void method not supported" } };
+        }
+
+        /// <summary>
+        /// Voids a payment
+        /// </summary>
+        /// <param name="voidPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest)
+        {
+            return await Task.Run(() => new VoidPaymentResult { Errors = new[] { "Void method not supported" } });
         }
 
         /// <summary>
@@ -173,6 +246,39 @@ namespace Nop.Plugin.Payments.Manual
         }
 
         /// <summary>
+        /// Process recurring payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            return await Task.Run(() =>
+            {
+                var result = new ProcessPaymentResult
+                {
+                    AllowStoringCreditCardNumber = true
+                };
+                switch (_manualPaymentSettings.TransactMode)
+                {
+                    case TransactMode.Pending:
+                        result.NewPaymentStatus = PaymentStatus.Pending;
+                        break;
+                    case TransactMode.Authorize:
+                        result.NewPaymentStatus = PaymentStatus.Authorized;
+                        break;
+                    case TransactMode.AuthorizeAndCapture:
+                        result.NewPaymentStatus = PaymentStatus.Paid;
+                        break;
+                    default:
+                        result.AddError("Not supported transaction type");
+                        break;
+                }
+
+                return result;
+            });
+        }
+
+        /// <summary>
         /// Cancels a recurring payment
         /// </summary>
         /// <param name="cancelPaymentRequest">Request</param>
@@ -181,6 +287,16 @@ namespace Nop.Plugin.Payments.Manual
         {
             //always success
             return new CancelRecurringPaymentResult();
+        }
+
+        /// <summary>
+        /// Cancels a recurring payment
+        /// </summary>
+        /// <param name="cancelPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest)
+        {
+            return await Task.Run(() => new CancelRecurringPaymentResult { Errors = new[] { "Recurring payment not supported" } });
         }
 
         /// <summary>

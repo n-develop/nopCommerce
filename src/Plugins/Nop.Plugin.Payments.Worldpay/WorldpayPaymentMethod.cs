@@ -124,6 +124,58 @@ namespace Nop.Plugin.Payments.Worldpay
         }
 
         /// <summary>
+        /// Process a regular or recurring payment
+        /// </summary>
+        /// <param name="paymentRequest">Payment request parameters</param>
+        /// <param name="isRecurringPayment">Whether it is a recurring payment</param>
+        /// <returns>Process payment result</returns>
+        private async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest paymentRequest, bool isRecurringPayment)
+        {
+            //create request parameters
+            var request = await CreateChargeRequestAsync(paymentRequest, isRecurringPayment);
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //charge transaction
+                var transaction = _worldpayPaymentSettings.TransactionMode == TransactionMode.Authorize
+                    ? _worldpayPaymentManager.Authorize(new AuthorizeRequest(request))
+                    : _worldpayPaymentManager.Charge(request)
+                      ?? throw new NopException("An error occurred while processing. Error details in the log");
+
+                //save card identifier to payment custom values for further purchasing
+                if (isRecurringPayment && !string.IsNullOrEmpty(transaction.VaultData?.Token?.PaymentMethodId))
+                    paymentRequest.CustomValues.Add(
+                        _localizationService.GetResource("Plugins.Payments.Worldpay.Fields.StoredCard.Key"),
+                        transaction.VaultData.Token.PaymentMethodId);
+
+                //return result
+                var result = new ProcessPaymentResult
+                {
+                    AvsResult = $"{transaction.AvsResult}. Code: {transaction.AvsCode}",
+                    Cvv2Result = $"{transaction.CvvResult}. Code: {transaction.CvvCode}",
+                    AuthorizationTransactionCode = transaction.AuthorizationCode
+                };
+
+                if (_worldpayPaymentSettings.TransactionMode == TransactionMode.Authorize)
+                {
+                    result.AuthorizationTransactionId = transaction.TransactionId.ToString();
+                    result.AuthorizationTransactionResult = transaction.ResponseText;
+                    result.NewPaymentStatus = PaymentStatus.Authorized;
+                }
+
+                if (_worldpayPaymentSettings.TransactionMode == TransactionMode.Charge)
+                {
+                    result.CaptureTransactionId = transaction.TransactionId.ToString();
+                    result.CaptureTransactionResult = transaction.ResponseText;
+                    result.NewPaymentStatus = PaymentStatus.Paid;
+                }
+
+                return result;
+            });
+        }
+
+        /// <summary>
         /// Create request parameters to charge transaction
         /// </summary>
         /// <param name="paymentRequest">Payment request parameters</param>
@@ -253,6 +305,150 @@ namespace Nop.Plugin.Payments.Worldpay
             return request;
         }
 
+        /// <summary>
+        /// Create request parameters to charge transaction
+        /// </summary>
+        /// <param name="paymentRequest">Payment request parameters</param>
+        /// <param name="isRecurringPayment">Whether it is a recurring payment</param>
+        /// <returns>Charge request parameters</returns>
+        private async Task<ChargeRequest> CreateChargeRequestAsync(ProcessPaymentRequest paymentRequest,bool isRecurringPayment)
+        {
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //get customer
+                var customer = _customerService.GetCustomerById(paymentRequest.CustomerId);
+                if (customer == null)
+                    throw new NopException("Customer cannot be loaded");
+
+                //whether USD is available
+                var usdCurrency = _currencyService.GetCurrencyByCode("USD");
+                if (usdCurrency == null)
+                    throw new NopException("USD currency cannot be loaded");
+
+                //create common charge request parameters
+                var request = new ChargeRequest
+                {
+                    OrderId = CommonHelper.EnsureMaximumLength(paymentRequest.OrderGuid.ToString(), 25),
+                    TransactionDuplicateCheckType = TransactionDuplicateCheckType.NoCheck,
+                    ExtendedInformation = new ExtendedInformation
+                    {
+                        InvoiceNumber = paymentRequest.OrderGuid.ToString(),
+                        InvoiceDescription =
+                            $"Order from the '{_storeService.GetStoreById(paymentRequest.StoreId)?.Name}'"
+                    }
+                };
+
+                //set amount in USD
+                var amount = _currencyService.ConvertFromPrimaryStoreCurrency(paymentRequest.OrderTotal, usdCurrency);
+                request.Amount = Math.Round(amount, 2);
+
+                //get current shopping cart
+                var shoppingCart = customer.ShoppingCartItems
+                    .Where(shoppingCartItem => shoppingCartItem.ShoppingCartType == ShoppingCartType.ShoppingCart)
+                    .LimitPerStore(paymentRequest.StoreId).ToList();
+
+                //whether there are non-downloadable items in the shopping cart
+                var nonDownloadable = shoppingCart.Any(item => !item.Product.IsDownload);
+                request.ExtendedInformation.GoodsType = nonDownloadable ? GoodsType.Physical : GoodsType.Digital;
+
+                //try to get previously stored card details
+                var storedCardKey = _localizationService.GetResource("Plugins.Payments.Worldpay.Fields.StoredCard.Key");
+                if (paymentRequest.CustomValues.TryGetValue(storedCardKey, out object storedCardId) &&
+                    !storedCardId.ToString().Equals(Guid.Empty.ToString()))
+                {
+                    //check whether customer exists in Vault
+                    var vaultCustomer =
+                        _worldpayPaymentManager.GetCustomer(
+                            customer.GetAttribute<string>(WorldpayPaymentDefaults.CustomerIdAttribute))
+                        ?? throw new NopException("Failed to retrieve customer");
+
+                    //use previously stored card to charge
+                    request.PaymentVaultToken = new VaultToken
+                    {
+                        CustomerId = vaultCustomer.CustomerId,
+                        PaymentMethodId = storedCardId.ToString()
+                    };
+
+                    return request;
+                }
+
+                //or try to get the card token
+                var cardTokenKey = _localizationService.GetResource("Plugins.Payments.Worldpay.Fields.Token.Key");
+                if (!paymentRequest.CustomValues.TryGetValue(cardTokenKey, out object token) ||
+                    string.IsNullOrEmpty(token?.ToString()))
+                    throw new NopException("Failed to get the card token");
+
+                //remove the card token from payment custom values, since it is no longer needed
+                paymentRequest.CustomValues.Remove(cardTokenKey);
+
+                //public key is required to pay with card token
+                request.PaymentVaultToken = new VaultToken
+                {
+                    PublicKey = _worldpayPaymentSettings.PublicKey
+                };
+
+                //whether to save card details for the future purchasing
+                var saveCardKey = _localizationService.GetResource("Plugins.Payments.Worldpay.Fields.SaveCard.Key");
+                if (paymentRequest.CustomValues.TryGetValue(saveCardKey, out object saveCardValue) &&
+                    saveCardValue is bool saveCard && saveCard && !customer.IsGuest())
+                {
+                    //remove the value from payment custom values, since it is no longer needed
+                    paymentRequest.CustomValues.Remove(saveCardKey);
+
+                    try
+                    {
+                        //check whether customer exists and try to create the new one, if not exists
+                        var vaultCustomer =
+                            _worldpayPaymentManager.GetCustomer(
+                                customer.GetAttribute<string>(WorldpayPaymentDefaults.CustomerIdAttribute))
+                            ?? _worldpayPaymentManager.CreateCustomer(new CreateCustomerRequest
+                            {
+                                CustomerId = customer.Id.ToString(),
+                                CustomerDuplicateCheckType = CustomerDuplicateCheckType.Ignore,
+                                EmailReceiptEnabled = !string.IsNullOrEmpty(customer.Email),
+                                Email = customer.Email,
+                                FirstName = customer.GetAttribute<string>(NopCustomerDefaults.FirstNameAttribute),
+                                LastName = customer.GetAttribute<string>(NopCustomerDefaults.LastNameAttribute),
+                                Company = customer.GetAttribute<string>(NopCustomerDefaults.CompanyAttribute),
+                                Phone = customer.GetAttribute<string>(NopCustomerDefaults.PhoneAttribute),
+                                BillingAddress = new Address
+                                {
+                                    Line1 = customer.BillingAddress?.Address1,
+                                    City = customer.BillingAddress?.City,
+                                    State = customer.BillingAddress?.StateProvince?.Abbreviation,
+                                    Country = customer.BillingAddress?.Country?.TwoLetterIsoCode,
+                                    Zip = customer.BillingAddress?.ZipPostalCode,
+                                    Company = customer.BillingAddress?.Company,
+                                    Phone = customer.BillingAddress?.PhoneNumber
+                                }
+                            }) ?? throw new NopException("Failed to create customer. Error details in the log");
+
+                        //save Vault customer identifier as a generic attribute
+                        _genericAttributeService.SaveAttribute(customer, WorldpayPaymentDefaults.CustomerIdAttribute,
+                            vaultCustomer.CustomerId);
+
+                        //add card to the Vault after charge
+                        request.AddToVault = true;
+                        request.PaymentVaultToken.CustomerId = vaultCustomer.CustomerId;
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.Warning(exception.Message, exception, customer);
+                        if (isRecurringPayment)
+                            throw new NopException("For recurring payments you need to save the card details");
+                    }
+                }
+                else if (isRecurringPayment)
+                    throw new NopException("For recurring payments you need to save the card details");
+
+                //use card token to charge
+                request.PaymentVaultToken.PaymentMethodId = token.ToString();
+
+                return request;
+            });
+        }
+
         #endregion
 
         #region Methods
@@ -271,12 +467,35 @@ namespace Nop.Plugin.Payments.Worldpay
         }
 
         /// <summary>
+        /// Process a payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            if (processPaymentRequest == null)
+                throw new ArgumentException(nameof(processPaymentRequest));
+
+            return await ProcessPaymentAsync(processPaymentRequest, false);
+        }
+
+        /// <summary>
         /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
         /// </summary>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
         public void PostProcessPayment(PostProcessPaymentRequest postProcessPaymentRequest)
         {
             //do nothing
+        }
+
+        /// <summary>
+        /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
+        /// </summary>
+        /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
+        public Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest)
+        {
+            //do nothing
+            return Task.Run(() => { });
         }
 
         /// <summary>
@@ -344,6 +563,51 @@ namespace Nop.Plugin.Payments.Worldpay
         }
 
         /// <summary>
+        /// Captures payment
+        /// </summary>
+        /// <param name="capturePaymentRequest">Capture payment request</param>
+        /// <returns>Capture payment result</returns>
+        public async Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest)
+        {
+            if (capturePaymentRequest == null)
+                throw new ArgumentException(nameof(capturePaymentRequest));
+
+            //TODO Remove Task.Run(()=>{})
+            return await Task.Run(() =>
+            {
+                //set amount in USD
+                var amount = _currencyService.ConvertCurrency(capturePaymentRequest.Order.OrderTotal,
+                    capturePaymentRequest.Order.CurrencyRate);
+
+                //whether there are non-downloadable order items
+                var nonDownloadable =
+                    capturePaymentRequest.Order.OrderItems.Any(item => !item.Product?.IsDownload ?? true);
+
+                //capture transaction
+                var transaction = _worldpayPaymentManager.CaptureTransaction(new CaptureRequest
+                {
+                    TransactionId = capturePaymentRequest.Order.AuthorizationTransactionId,
+                    Amount = Math.Round(amount, 2),
+                    ExtendedInformation = new ExtendedInformation
+                    {
+                        GoodsType = nonDownloadable ? GoodsType.Physical : GoodsType.Digital,
+                        InvoiceNumber = capturePaymentRequest.Order.CustomOrderNumber,
+                        InvoiceDescription =
+                            $"Order from the '{_storeService.GetStoreById(capturePaymentRequest.Order.StoreId)?.Name}'"
+                    }
+                }) ?? throw new NopException("An error occurred while processing. Error details in the log");
+
+                //sucessfully captured
+                return new CapturePaymentResult
+                {
+                    NewPaymentStatus = PaymentStatus.Paid,
+                    CaptureTransactionId = transaction.TransactionId.ToString(),
+                    CaptureTransactionResult = transaction.ResponseText
+                };
+            });
+        }
+
+        /// <summary>
         /// Refunds a payment
         /// </summary>
         /// <param name="refundPaymentRequest">Request</param>
@@ -376,6 +640,41 @@ namespace Nop.Plugin.Payments.Worldpay
         }
 
         /// <summary>
+        /// Refunds a payment
+        /// </summary>
+        /// <param name="refundPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest)
+        {
+            return await Task.Run(() =>
+            {
+                if (refundPaymentRequest == null)
+                    throw new ArgumentException(nameof(refundPaymentRequest));
+
+                //whether USD is available
+                var usdCurrency = _currencyService.GetCurrencyByCode("USD");
+                if (usdCurrency == null)
+                    throw new NopException("USD currency cannot be loaded");
+
+                //set amount in USD
+                var amount = _currencyService.ConvertCurrency(refundPaymentRequest.AmountToRefund, refundPaymentRequest.Order.CurrencyRate);
+
+                var transaction = _worldpayPaymentManager.Refund(new RefundRequest
+                {
+                    TransactionId = refundPaymentRequest.Order.CaptureTransactionId,
+                    Amount = Math.Round(amount, 2),
+                    OrderId = CommonHelper.EnsureMaximumLength(Guid.NewGuid().ToString(), 25)
+                }) ?? throw new NopException("An error occurred while processing. Error details in the log");
+            
+                //sucessfully refunded
+                return new RefundPaymentResult
+                {
+                    NewPaymentStatus = refundPaymentRequest.IsPartialRefund ? PaymentStatus.PartiallyRefunded : PaymentStatus.Refunded
+                };
+            });
+        }
+
+        /// <summary>
         /// Voids a payment
         /// </summary>
         /// <param name="voidPaymentRequest">Request</param>
@@ -401,6 +700,34 @@ namespace Nop.Plugin.Payments.Worldpay
         }
 
         /// <summary>
+        /// Voids a payment
+        /// </summary>
+        /// <param name="voidPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest)
+        {
+            return await Task.Run(() =>
+            {
+                if (voidPaymentRequest == null)
+                    throw new ArgumentException(nameof(voidPaymentRequest));
+
+                //void transaction
+                var transaction = _worldpayPaymentManager.VoidTransaction(new VoidRequest
+                {
+                    TransactionId = voidPaymentRequest.Order.AuthorizationTransactionId,
+                    OrderId = CommonHelper.EnsureMaximumLength(Guid.NewGuid().ToString(), 25),
+                    VoidType = VoidType.MerchantGenerated
+                }) ?? throw new NopException("An error occurred while processing. Error details in the log");
+            
+                //sucessfully voided
+                return new VoidPaymentResult
+                {
+                    NewPaymentStatus = PaymentStatus.Voided
+                };
+            });
+        }
+
+        /// <summary>
         /// Process recurring payment
         /// </summary>
         /// <param name="processPaymentRequest">Payment info required for an order processing</param>
@@ -411,6 +738,19 @@ namespace Nop.Plugin.Payments.Worldpay
                 throw new ArgumentException(nameof(processPaymentRequest));
 
             return ProcessPayment(processPaymentRequest, true);
+        }
+
+        /// <summary>
+        /// Process recurring payment
+        /// </summary>
+        /// <param name="processPaymentRequest">Payment info required for an order processing</param>
+        /// <returns>Process payment result</returns>
+        public async Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        {
+            if (processPaymentRequest == null)
+                throw new ArgumentException(nameof(processPaymentRequest));
+
+            return await ProcessPaymentAsync(processPaymentRequest, true);
         }
 
         /// <summary>
@@ -425,6 +765,19 @@ namespace Nop.Plugin.Payments.Worldpay
 
             //always success
             return new CancelRecurringPaymentResult();
+        }
+
+        /// <summary>
+        /// Cancels a recurring payment
+        /// </summary>
+        /// <param name="cancelPaymentRequest">Request</param>
+        /// <returns>Result</returns>
+        public async Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest)
+        {
+            if (cancelPaymentRequest == null)
+                throw new ArgumentException(nameof(cancelPaymentRequest));
+
+            return await Task.Run(() => new CancelRecurringPaymentResult());
         }
 
         /// <summary>
