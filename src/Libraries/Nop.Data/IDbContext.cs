@@ -18,9 +18,8 @@ namespace Nop.Data
         /// Creates a DbSet that can be used to query and save instances of entity
         /// </summary>
         /// <typeparam name="TEntity">Entity type</typeparam>
-        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
-        /// <returns>The asynchronous task whose result contains the set for the given entity type</returns>
-        Task<DbSet<TEntity>> GetDbSetAsync<TEntity>(CancellationToken cancellationToken = default(CancellationToken)) where TEntity : BaseEntity;
+        /// <returns>A set for the given entity type</returns>
+        DbSet<TEntity> Set<TEntity>() where TEntity : BaseEntity;
 
         /// <summary>
         /// Saves all changes made in this context to the database

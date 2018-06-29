@@ -29,8 +29,8 @@ namespace Nop.Core.Data
         /// <param name="fileProvider">File provider</param>
         /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>The asynchronous task whose result contains loaded settings</returns>
-        public static async Task<DataSettings> LoadSettingsAsync(string filePath = null, bool reloadSettings = false, INopFileProvider fileProvider = null,
-            CancellationToken cancellationToken = default(CancellationToken))
+        public static async Task<DataSettings> LoadSettingsAsync(string filePath = null, bool reloadSettings = false, 
+            INopFileProvider fileProvider = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (!reloadSettings && Singleton<DataSettings>.Instance != null)
                 return Singleton<DataSettings>.Instance;

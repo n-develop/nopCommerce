@@ -231,7 +231,7 @@ namespace Nop.Data
             get
             {
                 if (_entities == null)
-                    _entities = _context.GetDbSetAsync<TEntity>().Result;
+                    _entities = _context.Set<TEntity>();
 
                 return _entities;
             }

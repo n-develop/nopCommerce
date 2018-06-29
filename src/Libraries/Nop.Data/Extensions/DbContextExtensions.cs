@@ -40,8 +40,7 @@ namespace Nop.Data.Extensions
         /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>The asynchronous task whose result contains a copy of the passed entity</returns>
         private static async Task<TEntity> LoadEntityCopyAsync<TEntity>(IDbContext context, TEntity entity,
-            Func<EntityEntry<TEntity>, CancellationToken, Task<PropertyValues>> getValuesFunction,
-            CancellationToken cancellationToken) where TEntity : BaseEntity
+            Func<EntityEntry<TEntity>, Task<PropertyValues>> getValuesFunction, CancellationToken cancellationToken) where TEntity : BaseEntity
         {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
@@ -56,7 +55,7 @@ namespace Nop.Data.Extensions
                 return null;
 
             //get a copy of the entity
-            var propertyValues = await getValuesFunction(entityEntry, cancellationToken);
+            var propertyValues = await getValuesFunction(entityEntry);
             var entityCopy = propertyValues?.ToObject() as TEntity;
 
             return entityCopy;
@@ -118,7 +117,7 @@ namespace Nop.Data.Extensions
             CancellationToken cancellationToken = default(CancellationToken)) where TEntity : BaseEntity
         {
             return await LoadEntityCopyAsync(context, entity,
-                (entityEntry, cancelToken) => Task.Run(() => entityEntry.OriginalValues, cancelToken), cancellationToken);
+                (entityEntry) => Task.Run(() => entityEntry.OriginalValues, cancellationToken), cancellationToken);
         }
 
         /// <summary>
@@ -133,7 +132,7 @@ namespace Nop.Data.Extensions
             CancellationToken cancellationToken = default(CancellationToken)) where TEntity : BaseEntity
         {
             return await LoadEntityCopyAsync(context, entity,
-                (entityEntry, cancelToken) => entityEntry.GetDatabaseValuesAsync(cancelToken), cancellationToken);
+                (entityEntry) => entityEntry.GetDatabaseValuesAsync(cancellationToken), cancellationToken);
         }
 
         /// <summary>

@@ -21,8 +21,8 @@ namespace Nop.Core.Caching
         /// <param name="acquire">Function to load item if it's not in the cache yet</param>
         /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>The asynchronous task whose result contains cached item</returns>
-        public static async Task<T> GetAsync<T>(this ICacheManager cacheManager, string key,
-            Func<CancellationToken, Task<T>> acquire, CancellationToken cancellationToken = default(CancellationToken))
+        public static async Task<T> GetAsync<T>(this ICacheManager cacheManager, string key, Func<Task<T>> acquire, 
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             //use default cache time
             return await GetAsync(cacheManager, key, NopCachingDefaults.CacheTime, acquire, cancellationToken);
@@ -38,15 +38,15 @@ namespace Nop.Core.Caching
         /// <param name="acquire">Function to load item if it's not in the cache yet</param>
         /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>The asynchronous task whose result contains cached item</returns>
-        public static async Task<T> GetAsync<T>(this ICacheManager cacheManager, string key, int cacheTime,
-            Func<CancellationToken, Task<T>> acquire, CancellationToken cancellationToken = default(CancellationToken))
+        public static async Task<T> GetAsync<T>(this ICacheManager cacheManager, string key, int cacheTime, Func<Task<T>> acquire, 
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             //item already is in cache, so return it
             if (await cacheManager.IsSetAsync(key, cancellationToken))
                 return await cacheManager.GetAsync<T>(key, cancellationToken);
 
             //or create it using passed function
-            var result = await acquire(cancellationToken);
+            var result = await acquire();
 
             //and set in cache (if cache time is defined)
             if (cacheTime > 0)

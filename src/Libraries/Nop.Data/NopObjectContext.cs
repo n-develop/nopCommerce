@@ -86,11 +86,10 @@ namespace Nop.Data
         /// Creates a DbSet that can be used to query and save instances of entity
         /// </summary>
         /// <typeparam name="TEntity">Entity type</typeparam>
-        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
-        /// <returns>The asynchronous task whose result contains the set for the given entity type</returns>
-        public virtual async Task<DbSet<TEntity>> GetDbSetAsync<TEntity>(CancellationToken cancellationToken) where TEntity : BaseEntity
+        /// <returns>A set for the given entity type</returns>
+        public virtual new DbSet<TEntity> Set<TEntity>() where TEntity : BaseEntity
         {
-            return await Task.Run(() => base.Set<TEntity>(), cancellationToken);
+            return base.Set<TEntity>();
         }
 
         /// <summary>
@@ -128,7 +127,7 @@ namespace Nop.Data
             CancellationToken cancellationToken) where TEntity : BaseEntity
         {
             var sqlString = await CreateSqlWithParametersAsync(sql, parameters, cancellationToken);
-            return (await GetDbSetAsync<TEntity>(cancellationToken)).FromSql(sqlString, parameters);
+            return this.Set<TEntity>().FromSql(sqlString, parameters);
         }
 
         /// <summary>
