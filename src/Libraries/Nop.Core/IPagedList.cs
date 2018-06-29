@@ -9,32 +9,32 @@ namespace Nop.Core
     public partial interface IPagedList<T> : IList<T>
     {
         /// <summary>
-        /// Page index
+        /// Gets a page index
         /// </summary>
         int PageIndex { get; }
 
         /// <summary>
-        /// Page size
+        /// Gets a page size
         /// </summary>
         int PageSize { get; }
 
         /// <summary>
-        /// Total count
+        /// Gets a total count
         /// </summary>
         int TotalCount { get; }
 
         /// <summary>
-        /// Total pages
+        /// Gets a total pages
         /// </summary>
         int TotalPages { get; }
 
         /// <summary>
-        /// Has previous page
+        /// Gets a value indicating whether the list has a previous page
         /// </summary>
         bool HasPreviousPage { get; }
 
         /// <summary>
-        /// Has next age
+        /// Gets a value indicating whether the list has a next page
         /// </summary>
         bool HasNextPage { get; }
     }

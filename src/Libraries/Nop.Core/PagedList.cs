@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Nop.Core
 {
@@ -11,96 +10,57 @@ namespace Nop.Core
     [Serializable]
     public partial class PagedList<T> : List<T>, IPagedList<T>
     {
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="source">source</param>
-        /// <param name="pageIndex">Page index</param>
-        /// <param name="pageSize">Page size</param>
-        /// <param name="getOnlyTotalCount">A value in indicating whether you want to load only total number of records. Set to "true" if you don't want to load data from database</param>
-        public PagedList(IQueryable<T> source, int pageIndex, int pageSize, bool getOnlyTotalCount = false)
-        {
-            var total = source.Count();
-            this.TotalCount = total;
-            this.TotalPages = total / pageSize;
-
-            if (total % pageSize > 0)
-                TotalPages++;
-
-            this.PageSize = pageSize;
-            this.PageIndex = pageIndex;
-            if (getOnlyTotalCount)
-                return;
-            this.AddRange(source.Skip(pageIndex * pageSize).Take(pageSize).ToList());
-        }
+        #region Ctor
 
         /// <summary>
         /// Ctor
         /// </summary>
-        /// <param name="source">source</param>
+        /// <param name="totalCount">Total item number</param>
+        /// <param name="totalPages">Total page number</param>
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
-        public PagedList(IList<T> source, int pageIndex, int pageSize)
+        public PagedList(int totalCount, int totalPages, int pageIndex, int pageSize)
         {
-            TotalCount = source.Count;
-            TotalPages = TotalCount / pageSize;
-
-            if (TotalCount % pageSize > 0)
-                TotalPages++;
-
+            this.TotalCount = totalCount;
+            this.TotalPages = totalPages;
             this.PageSize = pageSize;
             this.PageIndex = pageIndex;
-            this.AddRange(source.Skip(pageIndex * pageSize).Take(pageSize).ToList());
         }
 
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="source">source</param>
-        /// <param name="pageIndex">Page index</param>
-        /// <param name="pageSize">Page size</param>
-        /// <param name="totalCount">Total count</param>
-        public PagedList(IEnumerable<T> source, int pageIndex, int pageSize, int totalCount)
-        {
-            TotalCount = totalCount;
-            TotalPages = TotalCount / pageSize;
+        #endregion
 
-            if (TotalCount % pageSize > 0)
-                TotalPages++;
-
-            this.PageSize = pageSize;
-            this.PageIndex = pageIndex;
-            this.AddRange(source);
-        }
+        #region Properties
 
         /// <summary>
-        /// Page index
+        /// Gets a page index
         /// </summary>
-        public int PageIndex { get; }
+        public virtual int PageIndex { get; }
 
         /// <summary>
-        /// Page size
+        /// Gets a page size
         /// </summary>
-        public int PageSize { get; }
+        public virtual int PageSize { get; }
 
         /// <summary>
-        /// Total count
+        /// Gets a total count
         /// </summary>
-        public int TotalCount { get; }
+        public virtual int TotalCount { get; }
 
         /// <summary>
-        /// Total pages
+        /// Gets a total pages
         /// </summary>
-        public int TotalPages { get; }
+        public virtual int TotalPages { get; }
 
         /// <summary>
-        /// Has previous page
+        /// Gets a value indicating whether the list has a previous page
         /// </summary>
-        public bool HasPreviousPage => PageIndex > 0;
+        public virtual bool HasPreviousPage => PageIndex > 0;
 
         /// <summary>
-        /// Has next page
+        /// Gets a value indicating whether the list has a next page
         /// </summary>
-        public bool HasNextPage => PageIndex + 1 < TotalPages;
+        public virtual bool HasNextPage => PageIndex + 1 < TotalPages;
+
+        #endregion
     }
 }
