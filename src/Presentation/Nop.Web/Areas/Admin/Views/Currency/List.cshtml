@@ -164,8 +164,7 @@
 
                             $(document).ready(function () {
                                                                 
-                                var btnMarkPSC = document.querySelector("#btnMarkPSC-action-confirmation-submit-button");
-                                btnMarkPSC.addEventListener("click", function () {
+                                $("#btnMarkPSC-action-confirmation-submit-button").bind("click", function () {
                                     var postData = {
                                         id: selectedId
                                     };
@@ -186,8 +185,7 @@
                                     $('#btnMarkPSC-action-confirmation').modal('toggle');
                                 });
 
-                                var btnMarkPERC = document.querySelector("#btnMarkPERC-action-confirmation-submit-button");
-                                btnMarkPERC.addEventListener("click", function () {
+                                $("#btnMarkPERC-action-confirmation-submit-button").bind("click", function () {
                                     var postData = {
                                         id: selectedId
                                     };
