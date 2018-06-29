@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Html;
@@ -48,7 +49,7 @@ namespace Nop.Services.Vendors
         /// <param name="separator">Separator</param>
         /// <param name="htmlEncode">A value indicating whether to encode (HTML) values</param>
         /// <returns>Formatted attributes</returns>
-        public virtual string FormatAttributes(string attributesXml, string separator = "<br />", bool htmlEncode = true)
+        public virtual async Task<string> FormatAttributesAsync(string attributesXml, string separator = "<br />", bool htmlEncode = true)
         {
             var result = new StringBuilder();
 

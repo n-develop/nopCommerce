@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Nop.Core;
 using Nop.Core.Data;
 using Nop.Core.Domain.Vendors;
@@ -41,31 +44,34 @@ namespace Nop.Services.Vendors
         #endregion
 
         #region Methods
-        
+
         /// <summary>
         /// Gets a vendor by vendor identifier
         /// </summary>
         /// <param name="vendorId">Vendor identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Vendor</returns>
-        public virtual Vendor GetVendorById(int vendorId)
+        public virtual async Task<Vendor> GetVendorByIdAsync(int vendorId, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorId == 0)
                 return null;
 
-            return _vendorRepository.GetById(vendorId);
+            return await _vendorRepository.GetByIdAsync(vendorId, cancellationToken);
         }
+
 
         /// <summary>
         /// Delete a vendor
         /// </summary>
         /// <param name="vendor">Vendor</param>
-        public virtual void DeleteVendor(Vendor vendor)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task DeleteVendorAsync(Vendor vendor, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendor == null)
                 throw new ArgumentNullException(nameof(vendor));
 
             vendor.Deleted = true;
-            UpdateVendor(vendor);
+            await UpdateVendorAsync(vendor, cancellationToken);
 
             //event notification
             _eventPublisher.EntityDeleted(vendor);
@@ -78,8 +84,9 @@ namespace Nop.Services.Vendors
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
         /// <param name="showHidden">A value indicating whether to show hidden records</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Vendors</returns>
-        public virtual IPagedList<Vendor> GetAllVendors(string name = "", int pageIndex = 0, int pageSize = int.MaxValue, bool showHidden = false)
+        public virtual async Task<IPagedList<Vendor>> GetAllVendorsAsync(string name = "", int pageIndex = 0, int pageSize = int.MaxValue, bool showHidden = false, CancellationToken cancellationToken = default(CancellationToken))
         {
             var query = _vendorRepository.Table;
             if (!string.IsNullOrWhiteSpace(name))
@@ -90,34 +97,39 @@ namespace Nop.Services.Vendors
             query = query.Where(v => !v.Deleted);
             query = query.OrderBy(v => v.DisplayOrder).ThenBy(v => v.Name);
 
-            var vendors = new PagedList<Vendor>(query, pageIndex, pageSize);
-            return vendors;
+            return await Task.Run(() =>
+            {
+                var vendors = new PagedList<Vendor>(query, pageIndex, pageSize);
+                return vendors;
+            }, cancellationToken);
         }
 
         /// <summary>
         /// Gets vendors
         /// </summary>
         /// <param name="vendorIds">Vendor identifiers</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Vendors</returns>
-        public virtual IList<Vendor> GetVendorsByIds(int[] vendorIds)
+        public virtual async Task<IList<Vendor>> GetVendorsByIdsAsync(int[] vendorIds, CancellationToken cancellationToken = default(CancellationToken))
         {
             var query = _vendorRepository.Table;
             if (vendorIds != null)
                 query = query.Where(v => vendorIds.Contains(v.Id));
 
-            return query.ToList();
+            return await query.ToListAsync(cancellationToken);
         }
 
         /// <summary>
         /// Inserts a vendor
         /// </summary>
         /// <param name="vendor">Vendor</param>
-        public virtual void InsertVendor(Vendor vendor)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task InsertVendorAsync(Vendor vendor, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendor == null)
                 throw new ArgumentNullException(nameof(vendor));
 
-            _vendorRepository.Insert(vendor);
+            await _vendorRepository.InsertAsync(vendor, cancellationToken);
 
             //event notification
             _eventPublisher.EntityInserted(vendor);
@@ -127,12 +139,13 @@ namespace Nop.Services.Vendors
         /// Updates the vendor
         /// </summary>
         /// <param name="vendor">Vendor</param>
-        public virtual void UpdateVendor(Vendor vendor)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task UpdateVendorAsync(Vendor vendor, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendor == null)
                 throw new ArgumentNullException(nameof(vendor));
 
-            _vendorRepository.Update(vendor);
+            await _vendorRepository.UpdateAsync(vendor, cancellationToken);
 
             //event notification
             _eventPublisher.EntityUpdated(vendor);
@@ -142,25 +155,27 @@ namespace Nop.Services.Vendors
         /// Gets a vendor note note
         /// </summary>
         /// <param name="vendorNoteId">The vendor note identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Vendor note</returns>
-        public virtual VendorNote GetVendorNoteById(int vendorNoteId)
+        public virtual async Task<VendorNote> GetVendorNoteByIdAsync(int vendorNoteId, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorNoteId == 0)
                 return null;
 
-            return _vendorNoteRepository.GetById(vendorNoteId);
+            return await _vendorNoteRepository.GetByIdAsync(vendorNoteId, cancellationToken);
         }
 
         /// <summary>
         /// Deletes a vendor note
         /// </summary>
         /// <param name="vendorNote">The vendor note</param>
-        public virtual void DeleteVendorNote(VendorNote vendorNote)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task DeleteVendorNoteAsync(VendorNote vendorNote, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorNote == null)
                 throw new ArgumentNullException(nameof(vendorNote));
 
-            _vendorNoteRepository.Delete(vendorNote);
+            await _vendorNoteRepository.DeleteAsync(vendorNote, cancellationToken);
 
             //event notification
             _eventPublisher.EntityDeleted(vendorNote);

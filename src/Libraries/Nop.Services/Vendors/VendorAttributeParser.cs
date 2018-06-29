@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Xml;
 using Nop.Core.Domain.Vendors;
 using Nop.Services.Localization;
@@ -41,35 +44,40 @@ namespace Nop.Services.Vendors
         /// Gets vendor attribute identifiers
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>List of vendor attribute identifiers</returns>
-        protected virtual IList<int> ParseVendorAttributeIds(string attributesXml)
+        protected virtual async Task<IList<int>> ParseVendorAttributeIdsAsync(string attributesXml, CancellationToken cancellationToken = default(CancellationToken))
         {
-            var ids = new List<int>();
-            if (string.IsNullOrEmpty(attributesXml))
-                return ids;
-
-            try
+            return await Task.Run(() =>
             {
-                var xmlDoc = new XmlDocument();
-                xmlDoc.LoadXml(attributesXml);
+                var ids = new List<int>();
+                if (string.IsNullOrEmpty(attributesXml))
+                    return ids;
 
-                foreach (XmlNode node in xmlDoc.SelectNodes(@"//Attributes/VendorAttribute"))
+                try
                 {
-                    if (node.Attributes != null && node.Attributes["ID"] != null)
+                    var xmlDoc = new XmlDocument();
+                    xmlDoc.LoadXml(attributesXml);
+
+                    foreach (XmlNode node in xmlDoc.SelectNodes(@"//Attributes/VendorAttribute"))
                     {
+                        if (node.Attributes?["ID"] == null) 
+                            continue;
+
                         var str1 = node.Attributes["ID"].InnerText.Trim();
-                        if (int.TryParse(str1, out int id))
+                        if (int.TryParse(str1, out var id))
                         {
                             ids.Add(id);
                         }
                     }
                 }
-            }
-            catch (Exception exc)
-            {
-                Debug.Write(exc.ToString());
-            }
-            return ids;
+                catch (Exception exc)
+                {
+                    Debug.Write(exc.ToString());
+                }
+
+                return ids;
+            }, cancellationToken);
         }
 
         #endregion
@@ -80,17 +88,18 @@ namespace Nop.Services.Vendors
         /// Gets vendor attributes from XML
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>List of vendor attributes</returns>
-        public virtual IList<VendorAttribute> ParseVendorAttributes(string attributesXml)
+        public virtual async Task<IList<VendorAttribute>> ParseVendorAttributesAsync(string attributesXml, CancellationToken cancellationToken = default(CancellationToken))
         {
             var result = new List<VendorAttribute>();
             if (string.IsNullOrEmpty(attributesXml))
                 return result;
 
-            var ids = ParseVendorAttributeIds(attributesXml);
+            var ids = await ParseVendorAttributeIdsAsync(attributesXml, cancellationToken);
             foreach (var id in ids)
             {
-                var attribute = _vendorAttributeService.GetVendorAttributeById(id);
+                var attribute = await _vendorAttributeService.GetVendorAttributeByIdAsync(id, cancellationToken);
                 if (attribute != null)
                 {
                     result.Add(attribute);
@@ -103,31 +112,32 @@ namespace Nop.Services.Vendors
         /// Get vendor attribute values from XML
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>List of vendor attribute values</returns>
-        public virtual IList<VendorAttributeValue> ParseVendorAttributeValues(string attributesXml)
+        public virtual async Task<IList<VendorAttributeValue>> ParseVendorAttributeValuesAsync(string attributesXml, CancellationToken cancellationToken = default(CancellationToken))
         {
             var values = new List<VendorAttributeValue>();
             if (string.IsNullOrEmpty(attributesXml))
                 return values;
 
-            var attributes = ParseVendorAttributes(attributesXml);
+            var attributes = await ParseVendorAttributesAsync(attributesXml, cancellationToken);
             foreach (var attribute in attributes)
             {
                 if (!attribute.ShouldHaveValues())
                     continue;
 
-                var valuesStr = ParseValues(attributesXml, attribute.Id);
+                var valuesStr = await ParseValuesAsync(attributesXml, attribute.Id, cancellationToken);
                 foreach (var valueStr in valuesStr)
                 {
-                    if (!string.IsNullOrEmpty(valueStr))
-                    {
-                        if (int.TryParse(valueStr, out int id))
-                        {
-                            var value = _vendorAttributeService.GetVendorAttributeValueById(id);
-                            if (value != null)
-                                values.Add(value);
-                        }
-                    }
+                    if (string.IsNullOrEmpty(valueStr)) 
+                        continue;
+
+                    if (!int.TryParse(valueStr, out var id)) 
+                        continue;
+
+                    var value = await _vendorAttributeService.GetVendorAttributeValueByIdAsync(id, cancellationToken);
+                    if (value != null)
+                        values.Add(value);
                 }
             }
             return values;
@@ -138,44 +148,49 @@ namespace Nop.Services.Vendors
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
         /// <param name="vendorAttributeId">Vendor attribute identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Values of the vendor attribute</returns>
-        public virtual IList<string> ParseValues(string attributesXml, int vendorAttributeId)
+        public virtual async Task<IList<string>> ParseValuesAsync(string attributesXml, int vendorAttributeId, CancellationToken cancellationToken = default(CancellationToken))
         {
-            var selectedVendorAttributeValues = new List<string>();
-            if (string.IsNullOrEmpty(attributesXml))
-                return selectedVendorAttributeValues;
-
-            try
+            return await Task.Run(() =>
             {
-                var xmlDoc = new XmlDocument();
-                xmlDoc.LoadXml(attributesXml);
+                var selectedVendorAttributeValues = new List<string>();
+                if (string.IsNullOrEmpty(attributesXml))
+                    return selectedVendorAttributeValues;
 
-                var nodeList1 = xmlDoc.SelectNodes(@"//Attributes/VendorAttribute");
-                foreach (XmlNode node1 in nodeList1)
+                try
                 {
-                    if (node1.Attributes != null && node1.Attributes["ID"] != null)
+                    var xmlDoc = new XmlDocument();
+                    xmlDoc.LoadXml(attributesXml);
+
+                    var nodeList1 = xmlDoc.SelectNodes(@"//Attributes/VendorAttribute");
+                    foreach (XmlNode node1 in nodeList1)
                     {
+                        if (node1.Attributes?["ID"] == null) 
+                            continue;
+
                         var str1 = node1.Attributes["ID"].InnerText.Trim();
-                        if (int.TryParse(str1, out int id))
+                        if (!int.TryParse(str1, out var id)) 
+                            continue;
+
+                        if (id != vendorAttributeId) 
+                            continue;
+
+                        var nodeList2 = node1.SelectNodes(@"VendorAttributeValue/Value");
+                        foreach (XmlNode node2 in nodeList2)
                         {
-                            if (id == vendorAttributeId)
-                            {
-                                var nodeList2 = node1.SelectNodes(@"VendorAttributeValue/Value");
-                                foreach (XmlNode node2 in nodeList2)
-                                {
-                                    var value = node2.InnerText.Trim();
-                                    selectedVendorAttributeValues.Add(value);
-                                }
-                            }
+                            var value = node2.InnerText.Trim();
+                            selectedVendorAttributeValues.Add(value);
                         }
                     }
                 }
-            }
-            catch (Exception exc)
-            {
-                Debug.Write(exc.ToString());
-            }
-            return selectedVendorAttributeValues;
+                catch (Exception exc)
+                {
+                    Debug.Write(exc.ToString());
+                }
+
+                return selectedVendorAttributeValues;
+            }, cancellationToken);
         }
 
         /// <summary>
@@ -184,111 +199,114 @@ namespace Nop.Services.Vendors
         /// <param name="attributesXml">Attributes in XML format</param>
         /// <param name="vendorAttribute">Vendor attribute</param>
         /// <param name="value">Value</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Attributes in XML format</returns>
-        public virtual string AddVendorAttribute(string attributesXml, VendorAttribute vendorAttribute, string value)
+        public virtual async Task<string> AddVendorAttributeAsync(string attributesXml, VendorAttribute vendorAttribute, string value, CancellationToken cancellationToken = default(CancellationToken))
         {
-            var result = string.Empty;
-            try
+            return await Task.Run(() =>
             {
-                var xmlDoc = new XmlDocument();
-                if (string.IsNullOrEmpty(attributesXml))
+                var result = string.Empty;
+                try
                 {
-                    var element1 = xmlDoc.CreateElement("Attributes");
-                    xmlDoc.AppendChild(element1);
-                }
-                else
-                {
-                    xmlDoc.LoadXml(attributesXml);
-                }
-                var rootElement = (XmlElement)xmlDoc.SelectSingleNode(@"//Attributes");
-
-                XmlElement attributeElement = null;
-                //find existing
-                var nodeList1 = xmlDoc.SelectNodes(@"//Attributes/VendorAttribute");
-                foreach (XmlNode node1 in nodeList1)
-                {
-                    if (node1.Attributes != null && node1.Attributes["ID"] != null)
+                    var xmlDoc = new XmlDocument();
+                    if (string.IsNullOrEmpty(attributesXml))
                     {
-                        var str1 = node1.Attributes["ID"].InnerText.Trim();
-                        if (int.TryParse(str1, out int id))
-                        {
-                            if (id == vendorAttribute.Id)
-                            {
-                                attributeElement = (XmlElement)node1;
-                                break;
-                            }
-                        }
+                        var element1 = xmlDoc.CreateElement("Attributes");
+                        xmlDoc.AppendChild(element1);
                     }
-                }
+                    else
+                    {
+                        xmlDoc.LoadXml(attributesXml);
+                    }
 
-                //create new one if not found
-                if (attributeElement == null)
+                    var rootElement = (XmlElement) xmlDoc.SelectSingleNode(@"//Attributes");
+
+                    XmlElement attributeElement = null;
+                    //find existing
+                    var nodeList1 = xmlDoc.SelectNodes(@"//Attributes/VendorAttribute");
+                    foreach (XmlNode node1 in nodeList1)
+                    {
+                        if (node1.Attributes?["ID"] == null)
+                            continue;
+
+                        var str1 = node1.Attributes["ID"].InnerText.Trim();
+                        if (!int.TryParse(str1, out var id))
+                            continue;
+
+                        if (id != vendorAttribute.Id)
+                            continue;
+
+                        attributeElement = (XmlElement) node1;
+                        break;
+                    }
+
+                    //create new one if not found
+                    if (attributeElement == null)
+                    {
+                        attributeElement = xmlDoc.CreateElement("VendorAttribute");
+                        attributeElement.SetAttribute("ID", vendorAttribute.Id.ToString());
+                        rootElement.AppendChild(attributeElement);
+                    }
+
+                    var attributeValueElement = xmlDoc.CreateElement("VendorAttributeValue");
+                    attributeElement.AppendChild(attributeValueElement);
+
+                    var attributeValueValueElement = xmlDoc.CreateElement("Value");
+                    attributeValueValueElement.InnerText = value;
+                    attributeValueElement.AppendChild(attributeValueValueElement);
+
+                    result = xmlDoc.OuterXml;
+                }
+                catch (Exception exc)
                 {
-                    attributeElement = xmlDoc.CreateElement("VendorAttribute");
-                    attributeElement.SetAttribute("ID", vendorAttribute.Id.ToString());
-                    rootElement.AppendChild(attributeElement);
+                    Debug.Write(exc.ToString());
                 }
 
-                var attributeValueElement = xmlDoc.CreateElement("VendorAttributeValue");
-                attributeElement.AppendChild(attributeValueElement);
-
-                var attributeValueValueElement = xmlDoc.CreateElement("Value");
-                attributeValueValueElement.InnerText = value;
-                attributeValueElement.AppendChild(attributeValueValueElement);
-
-                result = xmlDoc.OuterXml;
-            }
-            catch (Exception exc)
-            {
-                Debug.Write(exc.ToString());
-            }
-            return result;
+                return result;
+            }, cancellationToken);
         }
 
         /// <summary>
         /// Validates vendor attributes
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Warnings</returns>
-        public virtual IList<string> GetAttributeWarnings(string attributesXml)
+        public virtual async Task<IList<string>> GetAttributeWarningsAsync(string attributesXml, CancellationToken cancellationToken = default(CancellationToken))
         {
             var warnings = new List<string>();
 
             //ensure it's our attributes
-            var attributes1 = ParseVendorAttributes(attributesXml);
+            var attributes1 = await ParseVendorAttributesAsync(attributesXml, cancellationToken);
 
             //validate required vendor attributes (whether they're chosen/selected/entered)
-            var attributes2 = _vendorAttributeService.GetAllVendorAttributes();
+            var attributes2 = await _vendorAttributeService.GetAllVendorAttributesAsync(cancellationToken);
             foreach (var a2 in attributes2)
             {
-                if (a2.IsRequired)
+                if (!a2.IsRequired) 
+                    continue;
+
+                var found = false;
+                //selected vendor attributes
+                foreach (var a1 in attributes1)
                 {
-                    var found = false;
-                    //selected vendor attributes
-                    foreach (var a1 in attributes1)
-                    {
-                        if (a1.Id == a2.Id)
-                        {
-                            var valuesStr = ParseValues(attributesXml, a1.Id);
-                            foreach (var str1 in valuesStr)
-                            {
-                                if (!string.IsNullOrEmpty(str1.Trim()))
-                                {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    if (a1.Id != a2.Id) 
+                        continue;
 
-                    //if not found
-                    if (!found)
+                    var valuesStr = await ParseValuesAsync(attributesXml, a1.Id, cancellationToken);
+                    if (valuesStr.Any(str1 => !string.IsNullOrEmpty(str1.Trim())))
                     {
-                        var notFoundWarning = string.Format(_localizationService.GetResource("ShoppingCart.SelectAttribute"), a2.GetLocalized(a => a.Name));
-
-                        warnings.Add(notFoundWarning);
+                        found = true;
                     }
                 }
+                
+                if (found) 
+                    continue;
+
+                //if not found
+                var notFoundWarning = string.Format(_localizationService.GetResource("ShoppingCart.SelectAttribute"), a2.GetLocalized(a => a.Name));
+
+                warnings.Add(notFoundWarning);
             }
 
             return warnings;

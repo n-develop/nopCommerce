@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nop.Core.Domain.Vendors;
 
 namespace Nop.Services.Vendors
@@ -12,23 +14,26 @@ namespace Nop.Services.Vendors
         /// Gets vendor attributes from XML
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>List of vendor attributes</returns>
-        IList<VendorAttribute> ParseVendorAttributes(string attributesXml);
+        Task<IList<VendorAttribute>> ParseVendorAttributesAsync(string attributesXml, CancellationToken cancellationToken);
 
         /// <summary>
         /// Get vendor attribute values from XML
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>List of vendor attribute values</returns>
-        IList<VendorAttributeValue> ParseVendorAttributeValues(string attributesXml);
+        Task<IList<VendorAttributeValue>> ParseVendorAttributeValuesAsync(string attributesXml, CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets values of the selected vendor attribute
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
         /// <param name="vendorAttributeId">Vendor attribute identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Values of the vendor attribute</returns>
-        IList<string> ParseValues(string attributesXml, int vendorAttributeId);
+        Task<IList<string>> ParseValuesAsync(string attributesXml, int vendorAttributeId, CancellationToken cancellationToken);
 
         /// <summary>
         /// Adds a vendor attribute
@@ -36,14 +41,16 @@ namespace Nop.Services.Vendors
         /// <param name="attributesXml">Attributes in XML format</param>
         /// <param name="vendorAttribute">Vendor attribute</param>
         /// <param name="value">Value</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Attributes in XML format</returns>
-        string AddVendorAttribute(string attributesXml, VendorAttribute vendorAttribute, string value);
+        Task<string> AddVendorAttributeAsync(string attributesXml, VendorAttribute vendorAttribute, string value, CancellationToken cancellationToken);
 
         /// <summary>
         /// Validates vendor attributes
         /// </summary>
         /// <param name="attributesXml">Attributes in XML format</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Warnings</returns>
-        IList<string> GetAttributeWarnings(string attributesXml);
+        Task<IList<string>> GetAttributeWarningsAsync(string attributesXml, CancellationToken cancellationToken);
     }
 }

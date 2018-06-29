@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Nop.Core.Caching;
 using Nop.Core.Data;
 using Nop.Core.Domain.Vendors;
@@ -51,44 +54,47 @@ namespace Nop.Services.Vendors
         /// <summary>
         /// Gets all vendor attributes
         /// </summary>
-        /// <returns>Vendor attributes</returns>
-        public virtual IList<VendorAttribute> GetAllVendorAttributes()
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the list of vendor attributes</returns>
+        public virtual async Task<IList<VendorAttribute>> GetAllVendorAttributesAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
-            return _cacheManager.Get(NopVendorsServiceDefaults.VendorAttributesAllCacheKey, () =>
+            return await _cacheManager.GetAsync(NopVendorsServiceDefaults.VendorAttributesAllCacheKey, () =>
             {
                 return _vendorAttributeRepository.Table
                     .OrderBy(vendorAttribute => vendorAttribute.DisplayOrder).ThenBy(vendorAttribute => vendorAttribute.Id)
-                    .ToList();
-            });
+                    .ToListAsync(cancellationToken);
+            }, cancellationToken);
         }
-
+        
         /// <summary>
         /// Gets a vendor attribute 
         /// </summary>
         /// <param name="vendorAttributeId">Vendor attribute identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Vendor attribute</returns>
-        public virtual VendorAttribute GetVendorAttributeById(int vendorAttributeId)
+        public virtual async Task<VendorAttribute> GetVendorAttributeByIdAsync(int vendorAttributeId, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttributeId == 0)
                 return null;
 
             var key = string.Format(NopVendorsServiceDefaults.VendorAttributesByIdCacheKey, vendorAttributeId);
-            return _cacheManager.Get(key, () => _vendorAttributeRepository.GetById(vendorAttributeId));
+            return await _cacheManager.GetAsync(key, () => _vendorAttributeRepository.GetByIdAsync(vendorAttributeId, cancellationToken), cancellationToken);
         }
 
         /// <summary>
         /// Inserts a vendor attribute
         /// </summary>
         /// <param name="vendorAttribute">Vendor attribute</param>
-        public virtual void InsertVendorAttribute(VendorAttribute vendorAttribute)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task InsertVendorAttributeAsync(VendorAttribute vendorAttribute, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttribute == null)
                 throw new ArgumentNullException(nameof(vendorAttribute));
 
-            _vendorAttributeRepository.Insert(vendorAttribute);
+            await _vendorAttributeRepository.InsertAsync(vendorAttribute, cancellationToken);
 
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey);
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey, cancellationToken);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey, cancellationToken);
 
             //event notification
             _eventPublisher.EntityInserted(vendorAttribute);
@@ -98,15 +104,16 @@ namespace Nop.Services.Vendors
         /// Updates a vendor attribute
         /// </summary>
         /// <param name="vendorAttribute">Vendor attribute</param>
-        public virtual void UpdateVendorAttribute(VendorAttribute vendorAttribute)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task UpdateVendorAttributeAsync(VendorAttribute vendorAttribute, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttribute == null)
                 throw new ArgumentNullException(nameof(vendorAttribute));
 
-            _vendorAttributeRepository.Update(vendorAttribute);
+            await _vendorAttributeRepository.UpdateAsync(vendorAttribute, cancellationToken);
 
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey);
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey, cancellationToken);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey, cancellationToken);
 
             //event notification
             _eventPublisher.EntityUpdated(vendorAttribute);
@@ -116,15 +123,16 @@ namespace Nop.Services.Vendors
         /// Deletes a vendor attribute
         /// </summary>
         /// <param name="vendorAttribute">Vendor attribute</param>
-        public virtual void DeleteVendorAttribute(VendorAttribute vendorAttribute)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task DeleteVendorAttributeAsync(VendorAttribute vendorAttribute, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttribute == null)
                 throw new ArgumentNullException(nameof(vendorAttribute));
 
-            _vendorAttributeRepository.Delete(vendorAttribute);
+            await _vendorAttributeRepository.DeleteAsync(vendorAttribute, cancellationToken);
 
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey);
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey, cancellationToken);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey, cancellationToken);
 
             //event notification
             _eventPublisher.EntityDeleted(vendorAttribute);
@@ -132,70 +140,73 @@ namespace Nop.Services.Vendors
 
         #endregion
 
-        #region Vendor attribute vallues
+        #region Vendor attribute values
 
         /// <summary>
         /// Gets vendor attribute values by vendor attribute identifier
         /// </summary>
         /// <param name="vendorAttributeId">The vendor attribute identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Vendor attribute values</returns>
-        public virtual IList<VendorAttributeValue> GetVendorAttributeValues(int vendorAttributeId)
+        public virtual async Task<IList<VendorAttributeValue>> GetVendorAttributeValuesAsync(int vendorAttributeId, CancellationToken cancellationToken = default(CancellationToken))
         {
             var key = string.Format(NopVendorsServiceDefaults.VendorAttributeValuesAllCacheKey, vendorAttributeId);
-            return _cacheManager.Get(key, () =>
+            return await _cacheManager.GetAsync(key, () =>
             {
                 return _vendorAttributeValueRepository.Table
                     .OrderBy(vendorAttributeValue => vendorAttributeValue.DisplayOrder).ThenBy(vendorAttributeValue => vendorAttributeValue.Id)
                     .Where(vendorAttributeValue => vendorAttributeValue.VendorAttributeId == vendorAttributeId)
-                    .ToList();
-            });
+                    .ToListAsync(cancellationToken);
+            }, cancellationToken);
         }
-        
+
         /// <summary>
         /// Gets a vendor attribute value
         /// </summary>
         /// <param name="vendorAttributeValueId">Vendor attribute value identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Vendor attribute value</returns>
-        public virtual VendorAttributeValue GetVendorAttributeValueById(int vendorAttributeValueId)
+        public virtual async Task<VendorAttributeValue> GetVendorAttributeValueByIdAsync(int vendorAttributeValueId, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttributeValueId == 0)
                 return null;
 
             var key = string.Format(NopVendorsServiceDefaults.VendorAttributeValuesByIdCacheKey, vendorAttributeValueId);
-            return _cacheManager.Get(key, () => _vendorAttributeValueRepository.GetById(vendorAttributeValueId));
+            return await _cacheManager.GetAsync(key, () => _vendorAttributeValueRepository.GetByIdAsync(vendorAttributeValueId, cancellationToken), cancellationToken);
         }
 
         /// <summary>
         /// Inserts a vendor attribute value
         /// </summary>
         /// <param name="vendorAttributeValue">Vendor attribute value</param>
-        public virtual void InsertVendorAttributeValue(VendorAttributeValue vendorAttributeValue)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task InsertVendorAttributeValueAsync(VendorAttributeValue vendorAttributeValue, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttributeValue == null)
                 throw new ArgumentNullException(nameof(vendorAttributeValue));
 
-            _vendorAttributeValueRepository.Insert(vendorAttributeValue);
+            await _vendorAttributeValueRepository.InsertAsync(vendorAttributeValue, cancellationToken);
 
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey);
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey, cancellationToken);
 
             //event notification
             _eventPublisher.EntityInserted(vendorAttributeValue);
         }
 
         /// <summary>
-        /// Updates the vendor attribute value
+        /// Updates a vendor attribute value
         /// </summary>
         /// <param name="vendorAttributeValue">Vendor attribute value</param>
-        public virtual void UpdateVendorAttributeValue(VendorAttributeValue vendorAttributeValue)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task UpdateVendorAttributeValueAsync(VendorAttributeValue vendorAttributeValue, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttributeValue == null)
                 throw new ArgumentNullException(nameof(vendorAttributeValue));
 
-            _vendorAttributeValueRepository.Update(vendorAttributeValue);
+            await _vendorAttributeValueRepository.UpdateAsync(vendorAttributeValue, cancellationToken);
 
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey);
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey, cancellationToken);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey, cancellationToken);
 
             //event notification
             _eventPublisher.EntityUpdated(vendorAttributeValue);
@@ -205,15 +216,16 @@ namespace Nop.Services.Vendors
         /// Deletes a vendor attribute value
         /// </summary>
         /// <param name="vendorAttributeValue">Vendor attribute value</param>
-        public virtual void DeleteVendorAttributeValue(VendorAttributeValue vendorAttributeValue)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task DeleteVendorAttributeValueAsync(VendorAttributeValue vendorAttributeValue, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (vendorAttributeValue == null)
                 throw new ArgumentNullException(nameof(vendorAttributeValue));
 
-            _vendorAttributeValueRepository.Delete(vendorAttributeValue);
+            await _vendorAttributeValueRepository.DeleteAsync(vendorAttributeValue, cancellationToken);
 
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey);
-            _cacheManager.RemoveByPattern(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributesPatternCacheKey, cancellationToken);
+            await _cacheManager.RemoveByPatternAsync(NopVendorsServiceDefaults.VendorAttributeValuesPatternCacheKey, cancellationToken);
 
             //event notification
             _eventPublisher.EntityDeleted(vendorAttributeValue);
