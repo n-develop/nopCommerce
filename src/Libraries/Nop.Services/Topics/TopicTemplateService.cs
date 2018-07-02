@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Nop.Core.Data;
 using Nop.Core.Domain.Topics;
 using Nop.Services.Events;
@@ -41,12 +44,13 @@ namespace Nop.Services.Topics
         /// Delete topic template
         /// </summary>
         /// <param name="topicTemplate">Topic template</param>
-        public virtual void DeleteTopicTemplate(TopicTemplate topicTemplate)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task DeleteTopicTemplateAsync(TopicTemplate topicTemplate, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (topicTemplate == null)
                 throw new ArgumentNullException(nameof(topicTemplate));
 
-            _topicTemplateRepository.Delete(topicTemplate);
+            await _topicTemplateRepository.DeleteAsync(topicTemplate, cancellationToken);
 
             //event notification
             _eventPublisher.EntityDeleted(topicTemplate);
@@ -55,14 +59,15 @@ namespace Nop.Services.Topics
         /// <summary>
         /// Gets all topic templates
         /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Topic templates</returns>
-        public virtual IList<TopicTemplate> GetAllTopicTemplates()
+        public virtual async Task<IList<TopicTemplate>> GetAllTopicTemplatesAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
             var query = from pt in _topicTemplateRepository.Table
                         orderby pt.DisplayOrder, pt.Id
                         select pt;
 
-            var templates = query.ToList();
+            var templates = await query.ToListAsync(cancellationToken);
             return templates;
         }
  
@@ -70,25 +75,27 @@ namespace Nop.Services.Topics
         /// Gets a topic template
         /// </summary>
         /// <param name="topicTemplateId">Topic template identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Topic template</returns>
-        public virtual TopicTemplate GetTopicTemplateById(int topicTemplateId)
+        public virtual async Task<TopicTemplate> GetTopicTemplateByIdAsync(int topicTemplateId, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (topicTemplateId == 0)
                 return null;
 
-            return _topicTemplateRepository.GetById(topicTemplateId);
+            return await _topicTemplateRepository.GetByIdAsync(topicTemplateId, cancellationToken);
         }
 
         /// <summary>
         /// Inserts topic template
         /// </summary>
         /// <param name="topicTemplate">Topic template</param>
-        public virtual void InsertTopicTemplate(TopicTemplate topicTemplate)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task InsertTopicTemplateAsync(TopicTemplate topicTemplate, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (topicTemplate == null)
                 throw new ArgumentNullException(nameof(topicTemplate));
 
-            _topicTemplateRepository.Insert(topicTemplate);
+            await _topicTemplateRepository.InsertAsync(topicTemplate, cancellationToken);
 
             //event notification
             _eventPublisher.EntityInserted(topicTemplate);
@@ -98,12 +105,13 @@ namespace Nop.Services.Topics
         /// Updates the topic template
         /// </summary>
         /// <param name="topicTemplate">Topic template</param>
-        public virtual void UpdateTopicTemplate(TopicTemplate topicTemplate)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        public virtual async Task UpdateTopicTemplateAsync(TopicTemplate topicTemplate, CancellationToken cancellationToken = default(CancellationToken))
         {
             if (topicTemplate == null)
                 throw new ArgumentNullException(nameof(topicTemplate));
 
-            _topicTemplateRepository.Update(topicTemplate);
+            await _topicTemplateRepository.UpdateAsync(topicTemplate, cancellationToken);
 
             //event notification
             _eventPublisher.EntityUpdated(topicTemplate);

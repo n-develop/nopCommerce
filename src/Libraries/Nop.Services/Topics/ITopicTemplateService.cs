@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Nop.Core.Domain.Topics;
 
 namespace Nop.Services.Topics
@@ -12,31 +14,36 @@ namespace Nop.Services.Topics
         /// Delete topic template
         /// </summary>
         /// <param name="topicTemplate">Topic template</param>
-        void DeleteTopicTemplate(TopicTemplate topicTemplate);
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        Task DeleteTopicTemplateAsync(TopicTemplate topicTemplate, CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets all topic templates
         /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Topic templates</returns>
-        IList<TopicTemplate> GetAllTopicTemplates();
+        Task<IList<TopicTemplate>> GetAllTopicTemplatesAsync(CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets a topic template
         /// </summary>
         /// <param name="topicTemplateId">Topic template identifier</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Topic template</returns>
-        TopicTemplate GetTopicTemplateById(int topicTemplateId);
+        Task<TopicTemplate> GetTopicTemplateByIdAsync(int topicTemplateId, CancellationToken cancellationToken);
 
         /// <summary>
         /// Inserts topic template
         /// </summary>
         /// <param name="topicTemplate">Topic template</param>
-        void InsertTopicTemplate(TopicTemplate topicTemplate);
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        Task InsertTopicTemplateAsync(TopicTemplate topicTemplate, CancellationToken cancellationToken);
 
         /// <summary>
         /// Updates the topic template
         /// </summary>
         /// <param name="topicTemplate">Topic template</param>
-        void UpdateTopicTemplate(TopicTemplate topicTemplate);
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        Task UpdateTopicTemplateAsync(TopicTemplate topicTemplate, CancellationToken cancellationToken);
     }
 }
