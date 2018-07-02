@@ -93,15 +93,11 @@ namespace Nop.Services.Vendors
                 query = query.Where(v => v.Name.Contains(name));
             if (!showHidden)
                 query = query.Where(v => v.Active);
-           
+
             query = query.Where(v => !v.Deleted);
             query = query.OrderBy(v => v.DisplayOrder).ThenBy(v => v.Name);
 
-            return await Task.Run(async () =>
-            {
-                var vendors = await query.ToPagedListAsync(pageIndex, pageSize, cancellationToken);
-                return vendors;
-            }, cancellationToken);
+            return await query.ToPagedListAsync(pageIndex, pageSize, cancellationToken);
         }
 
         /// <summary>
