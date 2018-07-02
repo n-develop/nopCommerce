@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Domain.Affiliates;
 using Nop.Core.Infrastructure;
@@ -7,9 +9,9 @@ using Nop.Services.Seo;
 namespace Nop.Services.Affiliates
 {
     /// <summary>
-    /// Affiliate extensions
+    /// Represents an affiliate extensions
     /// </summary>
-    public static class AffiliateExtensions
+    public static partial class AffiliateExtensions
     {
         /// <summary>
         /// Get full name
@@ -44,8 +46,10 @@ namespace Nop.Services.Affiliates
         /// </summary>
         /// <param name="affiliate">Affiliate</param>
         /// <param name="webHelper">Web helper</param>
-        /// <returns>Generated affiliate URL</returns>
-        public static string GenerateUrl(this Affiliate affiliate, IWebHelper webHelper)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the generated affiliate URL</returns>
+        public static async Task<string> GenerateUrlAsync(this Affiliate affiliate, IWebHelper webHelper,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (affiliate == null)
                 throw new ArgumentNullException(nameof(affiliate));
@@ -53,12 +57,12 @@ namespace Nop.Services.Affiliates
             if (webHelper == null)
                 throw new ArgumentNullException(nameof(webHelper));
 
-            var storeUrl = webHelper.GetStoreLocation(false);
-            var url = !string.IsNullOrEmpty(affiliate.FriendlyUrlName) ?
+            var storeUrl = await webHelper.GetStoreLocationAsync(false, cancellationToken);
+            var url = await (!string.IsNullOrEmpty(affiliate.FriendlyUrlName) ?
                 //use friendly URL
-                webHelper.ModifyQueryString(storeUrl, NopAffiliateDefaults.AffiliateQueryParameter, affiliate.FriendlyUrlName) :
+                webHelper.ModifyQueryStringAsync(storeUrl, NopAffiliateDefaults.AffiliateQueryParameter, new[] { affiliate.FriendlyUrlName }, cancellationToken) :
                 //use ID
-                webHelper.ModifyQueryString(storeUrl, NopAffiliateDefaults.AffiliateIdQueryParameter, affiliate.Id.ToString());
+                webHelper.ModifyQueryStringAsync(storeUrl, NopAffiliateDefaults.AffiliateIdQueryParameter, new[] { affiliate.Id.ToString() }, cancellationToken));
 
             return url;
         }
@@ -68,14 +72,16 @@ namespace Nop.Services.Affiliates
         /// </summary>
         /// <param name="affiliate">Affiliate</param>
         /// <param name="friendlyUrlName">Friendly URL name</param>
-        /// <returns>Valid friendly name</returns>
-        public static string ValidateFriendlyUrlName(this Affiliate affiliate, string friendlyUrlName)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the valid friendly name</returns>
+        public static async Task<string> ValidateFriendlyUrlNameAsync(this Affiliate affiliate, string friendlyUrlName,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             if (affiliate == null)
                 throw new ArgumentNullException(nameof(affiliate));
 
             //ensure we have only valid chars
-            friendlyUrlName = SeoExtensions.GetSeName(friendlyUrlName);
+            friendlyUrlName = await SeoExtensions.GetSeNameAsync(friendlyUrlName, cancellationToken);
 
             //max length
             //(consider a store URL + probably added {0}-{1} below)
@@ -90,8 +96,8 @@ namespace Nop.Services.Affiliates
             var tempName = friendlyUrlName;
             while (true)
             {
-                var affiliateService = EngineContext.Current.Resolve<IAffiliateService>();
-                var affiliateByFriendlyUrlName = affiliateService.GetAffiliateByFriendlyUrlName(tempName);
+                var affiliateService = await EngineContext.Current.ResolveAsync<IAffiliateService>(cancellationToken);
+                var affiliateByFriendlyUrlName = await affiliateService.GetAffiliateByFriendlyUrlNameAsync(tempName, cancellationToken);
 
                 var reserved = affiliateByFriendlyUrlName != null && affiliateByFriendlyUrlName.Id != affiliate.Id;
                 if (!reserved)

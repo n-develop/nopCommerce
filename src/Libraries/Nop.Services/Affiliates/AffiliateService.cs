@@ -1,5 +1,8 @@
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Nop.Core;
 using Nop.Core.Data;
 using Nop.Core.Domain.Affiliates;
@@ -41,26 +44,28 @@ namespace Nop.Services.Affiliates
         #endregion
 
         #region Methods
-        
+
         /// <summary>
         /// Gets an affiliate by affiliate identifier
         /// </summary>
         /// <param name="affiliateId">Affiliate identifier</param>
-        /// <returns>Affiliate</returns>
-        public virtual Affiliate GetAffiliateById(int affiliateId)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the affiliate</returns>
+        public virtual async Task<Affiliate> GetAffiliateByIdAsync(int affiliateId, CancellationToken cancellationToken)
         {
             if (affiliateId == 0)
                 return null;
-            
-            return _affiliateRepository.GetById(affiliateId);
+
+            return await _affiliateRepository.GetByIdAsync(affiliateId, cancellationToken);
         }
 
         /// <summary>
         /// Gets an affiliate by friendly URL name
         /// </summary>
         /// <param name="friendlyUrlName">Friendly URL name</param>
-        /// <returns>Affiliate</returns>
-        public virtual Affiliate GetAffiliateByFriendlyUrlName(string friendlyUrlName)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the affiliate</returns>
+        public virtual async Task<Affiliate> GetAffiliateByFriendlyUrlNameAsync(string friendlyUrlName, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(friendlyUrlName))
                 return null;
@@ -69,24 +74,8 @@ namespace Nop.Services.Affiliates
                         orderby a.Id
                         where a.FriendlyUrlName == friendlyUrlName
                         select a;
-            var affiliate = query.FirstOrDefault();
+            var affiliate = await query.FirstOrDefaultAsync(cancellationToken);
             return affiliate;
-        }
-
-        /// <summary>
-        /// Marks affiliate as deleted 
-        /// </summary>
-        /// <param name="affiliate">Affiliate</param>
-        public virtual void DeleteAffiliate(Affiliate affiliate)
-        {
-            if (affiliate == null)
-                throw new ArgumentNullException(nameof(affiliate));
-
-            affiliate.Deleted = true;
-            UpdateAffiliate(affiliate);
-
-            //event notification
-            _eventPublisher.EntityDeleted(affiliate);
         }
 
         /// <summary>
@@ -101,13 +90,14 @@ namespace Nop.Services.Affiliates
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
         /// <param name="showHidden">A value indicating whether to show hidden records</param>
-        /// <returns>Affiliates</returns>
-        public virtual IPagedList<Affiliate> GetAllAffiliates(string friendlyUrlName = null,
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result contains the list of affiliates</returns>
+        public virtual async Task<IPagedList<Affiliate>> GetAllAffiliatesAsync(string friendlyUrlName = null,
             string firstName = null, string lastName = null,
             bool loadOnlyWithOrders = false,
             DateTime? ordersCreatedFromUtc = null, DateTime? ordersCreatedToUtc = null,
             int pageIndex = 0, int pageSize = int.MaxValue,
-            bool showHidden = false)
+            bool showHidden = false, CancellationToken cancellationToken = default(CancellationToken))
         {
             var query = _affiliateRepository.Table;
             if (!string.IsNullOrWhiteSpace(friendlyUrlName))
@@ -137,7 +127,7 @@ namespace Nop.Services.Affiliates
 
             query = query.OrderByDescending(a => a.Id);
 
-            var affiliates = new PagedList<Affiliate>(query, pageIndex, pageSize);
+            var affiliates = await query.ToPagedListAsync(pageIndex, pageSize, cancellationToken);
             return affiliates;
         }
 
@@ -145,30 +135,52 @@ namespace Nop.Services.Affiliates
         /// Inserts an affiliate
         /// </summary>
         /// <param name="affiliate">Affiliate</param>
-        public virtual void InsertAffiliate(Affiliate affiliate)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that the affiliate is inserted</returns>
+        public virtual async Task InsertAffiliateAsync(Affiliate affiliate, CancellationToken cancellationToken)
         {
             if (affiliate == null)
                 throw new ArgumentNullException(nameof(affiliate));
 
-            _affiliateRepository.Insert(affiliate);
+            await _affiliateRepository.InsertAsync(affiliate, cancellationToken);
 
             //event notification
-            _eventPublisher.EntityInserted(affiliate);
+            await _eventPublisher.EntityInsertedAsync(affiliate, cancellationToken);
         }
 
         /// <summary>
         /// Updates the affiliate
         /// </summary>
         /// <param name="affiliate">Affiliate</param>
-        public virtual void UpdateAffiliate(Affiliate affiliate)
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that the affiliate is updated</returns>
+        public virtual async Task UpdateAffiliateAsync(Affiliate affiliate, CancellationToken cancellationToken)
         {
             if (affiliate == null)
                 throw new ArgumentNullException(nameof(affiliate));
 
-            _affiliateRepository.Update(affiliate);
+            await _affiliateRepository.UpdateAsync(affiliate, cancellationToken);
 
             //event notification
-            _eventPublisher.EntityUpdated(affiliate);
+            await _eventPublisher.EntityUpdatedAsync(affiliate, cancellationToken);
+        }
+
+        /// <summary>
+        /// Marks affiliate as deleted 
+        /// </summary>
+        /// <param name="affiliate">Affiliate</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that the affiliate is deleted</returns>
+        public virtual async Task DeleteAffiliateAsync(Affiliate affiliate, CancellationToken cancellationToken)
+        {
+            if (affiliate == null)
+                throw new ArgumentNullException(nameof(affiliate));
+
+            affiliate.Deleted = true;
+            await UpdateAffiliateAsync(affiliate, cancellationToken);
+
+            //event notification
+            await _eventPublisher.EntityDeletedAsync(affiliate, cancellationToken);
         }
 
         #endregion
