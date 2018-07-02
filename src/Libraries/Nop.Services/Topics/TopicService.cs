@@ -107,7 +107,7 @@ namespace Nop.Services.Topics
                 return null;
 
             var key = string.Format(NopTopicDefaults.TopicsByIdCacheKey, topicId);
-            return await _cacheManager.GetAsync(key, async () => await _topicRepository.GetByIdAsync(topicId, cancellationToken), cancellationToken);
+            return await _cacheManager.GetAsync(key, () => _topicRepository.GetByIdAsync(topicId, cancellationToken), cancellationToken);
         }
 
         /// <summary>
