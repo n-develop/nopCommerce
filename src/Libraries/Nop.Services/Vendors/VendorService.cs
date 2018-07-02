@@ -97,9 +97,9 @@ namespace Nop.Services.Vendors
             query = query.Where(v => !v.Deleted);
             query = query.OrderBy(v => v.DisplayOrder).ThenBy(v => v.Name);
 
-            return await Task.Run(() =>
+            return await Task.Run(async () =>
             {
-                var vendors = new PagedList<Vendor>(query, pageIndex, pageSize);
+                var vendors = await query.ToPagedListAsync(pageIndex, pageSize, cancellationToken);
                 return vendors;
             }, cancellationToken);
         }
@@ -152,7 +152,7 @@ namespace Nop.Services.Vendors
         }
 
         /// <summary>
-        /// Gets a vendor note note
+        /// Gets a vendor note
         /// </summary>
         /// <param name="vendorNoteId">The vendor note identifier</param>
         /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>

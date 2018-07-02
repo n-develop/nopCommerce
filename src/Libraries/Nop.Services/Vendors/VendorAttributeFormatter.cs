@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Domain.Catalog;
@@ -48,16 +49,17 @@ namespace Nop.Services.Vendors
         /// <param name="attributesXml">Attributes in XML format</param>
         /// <param name="separator">Separator</param>
         /// <param name="htmlEncode">A value indicating whether to encode (HTML) values</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Formatted attributes</returns>
-        public virtual async Task<string> FormatAttributesAsync(string attributesXml, string separator = "<br />", bool htmlEncode = true)
+        public virtual async Task<string> FormatAttributesAsync(string attributesXml, string separator = "<br />", bool htmlEncode = true, CancellationToken cancellationToken=default(CancellationToken))
         {
             var result = new StringBuilder();
 
-            var attributes = _vendorAttributeParser.ParseVendorAttributes(attributesXml);
+            var attributes = await _vendorAttributeParser.ParseVendorAttributesAsync(attributesXml, cancellationToken);
             for (var i = 0; i < attributes.Count; i++)
             {
                 var attribute = attributes[i];
-                var valuesStr = _vendorAttributeParser.ParseValues(attributesXml, attribute.Id);
+                var valuesStr = await _vendorAttributeParser.ParseValuesAsync(attributesXml, attribute.Id, cancellationToken);
                 for (var j = 0; j < valuesStr.Count; j++)
                 {
                     var valueStr = valuesStr[j];
@@ -68,7 +70,7 @@ namespace Nop.Services.Vendors
                         if (attribute.AttributeControlType == AttributeControlType.MultilineTextbox)
                         {
                             //multiline textbox
-                            var attributeName = attribute.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id);
+                            var attributeName = attribute.GetLocalized(a => a.Name, (await _workContext.GetWorkingLanguageAsync(cancellationToken)).Id);
                             //encode (if required)
                             if (htmlEncode)
                                 attributeName = WebUtility.HtmlEncode(attributeName);
@@ -83,7 +85,7 @@ namespace Nop.Services.Vendors
                         else
                         {
                             //other attributes (textbox, datepicker)
-                            formattedAttribute = $"{attribute.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id)}: {valueStr}";
+                            formattedAttribute = $"{attribute.GetLocalized(a => a.Name, (await _workContext.GetWorkingLanguageAsync(cancellationToken)).Id)}: {valueStr}";
                             //encode (if required)
                             if (htmlEncode)
                                 formattedAttribute = WebUtility.HtmlEncode(formattedAttribute);
@@ -91,12 +93,12 @@ namespace Nop.Services.Vendors
                     }
                     else
                     {
-                        if (int.TryParse(valueStr, out int attributeValueId))
+                        if (int.TryParse(valueStr, out var attributeValueId))
                         {
-                            var attributeValue = _vendorAttributeService.GetVendorAttributeValueById(attributeValueId);
+                            var attributeValue = await _vendorAttributeService.GetVendorAttributeValueByIdAsync(attributeValueId, cancellationToken);
                             if (attributeValue != null)
                             {
-                                formattedAttribute = $"{attribute.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id)}: {attributeValue.GetLocalized(a => a.Name, _workContext.WorkingLanguage.Id)}";
+                                formattedAttribute = $"{attribute.GetLocalized(a => a.Name, (await _workContext.GetWorkingLanguageAsync(cancellationToken)).Id)}: {attributeValue.GetLocalized(a => a.Name, (await _workContext.GetWorkingLanguageAsync(cancellationToken)).Id)}";
                             }
                             //encode (if required)
                             if (htmlEncode)
@@ -104,12 +106,12 @@ namespace Nop.Services.Vendors
                         }
                     }
 
-                    if (!string.IsNullOrEmpty(formattedAttribute))
-                    {
-                        if (i != 0 || j != 0)
-                            result.Append(separator);
-                        result.Append(formattedAttribute);
-                    }
+                    if (string.IsNullOrEmpty(formattedAttribute)) 
+                        continue;
+
+                    if (i != 0 || j != 0)
+                        result.Append(separator);
+                    result.Append(formattedAttribute);
                 }
             }
 
