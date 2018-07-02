@@ -222,7 +222,7 @@ namespace Nop.Web.Framework.Infrastructure
             builder.RegisterType<ExternalAuthenticationService>().As<IExternalAuthenticationService>().InstancePerLifetimeScope();
             builder.RegisterType<RoutePublisher>().As<IRoutePublisher>().SingleInstance();
             builder.RegisterType<EventPublisher>().As<IEventPublisher>().SingleInstance();
-            builder.RegisterType<SubscriptionService>().As<ISubscriptionService>().SingleInstance();
+            builder.RegisterType<EventSubscriptionService>().As<IEventSubscriptionService>().SingleInstance();
             builder.RegisterType<SettingService>().As<ISettingService>().InstancePerLifetimeScope();
 
 

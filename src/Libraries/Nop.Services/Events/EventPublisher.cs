@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nop.Core.Infrastructure;
 using Nop.Core.Plugins;
 using Nop.Services.Logging;
@@ -7,37 +9,45 @@ using Nop.Services.Logging;
 namespace Nop.Services.Events
 {
     /// <summary>
-    /// Evnt publisher
+    /// Represents the event publisher implementation
     /// </summary>
-    public class EventPublisher : IEventPublisher
+    public partial class EventPublisher : IEventPublisher
     {
-        private readonly ISubscriptionService _subscriptionService;
+        #region Fields
 
-        /// <summary>
-        /// Ctor
-        /// </summary>
-        /// <param name="subscriptionService"></param>
-        public EventPublisher(ISubscriptionService subscriptionService)
+        private readonly IEventSubscriptionService _eventSubscriptionService;
+
+        #endregion
+
+        #region Ctor
+
+        public EventPublisher(IEventSubscriptionService eventSubscriptionService)
         {
-            _subscriptionService = subscriptionService;
+            this._eventSubscriptionService = eventSubscriptionService;
         }
 
+        #endregion
+
+        #region Utilities
+
         /// <summary>
-        /// Publish to cunsumer
+        /// Publish event to consumer
         /// </summary>
-        /// <typeparam name="T">Type</typeparam>
-        /// <param name="x">Event consumer</param>
-        /// <param name="eventMessage">Event message</param>
-        protected virtual void PublishToConsumer<T>(IConsumer<T> x, T eventMessage)
+        /// <typeparam name="TEvent">Type of event</typeparam>
+        /// <param name="consumer">Event consumer</param>
+        /// <param name="eventObject">Event object</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that the event is published to the passed consumer</returns>
+        protected virtual async Task PublishEventAsync<TEvent>(IConsumer<TEvent> consumer, TEvent eventObject, CancellationToken cancellationToken)
         {
             try
             {
-                x.HandleEvent(eventMessage);
+                await consumer.HandleEventAsync(eventObject, cancellationToken);
             }
             catch (Exception exc)
             {
                 //log error
-                var logger = EngineContext.Current.Resolve<ILogger>();
+                var logger = await EngineContext.Current.ResolveAsync<ILogger>(cancellationToken);
                 //we put in to nested try-catch to prevent possible cyclic (if some error occurs)
                 try
                 {
@@ -50,19 +60,27 @@ namespace Nop.Services.Events
             }
         }
 
+        #endregion
+
+        #region Methods
+
         /// <summary>
         /// Publish event
         /// </summary>
-        /// <typeparam name="T">Type</typeparam>
-        /// <param name="eventMessage">Event message</param>
-        public virtual void Publish<T>(T eventMessage)
+        /// <typeparam name="TEvent">Type of event</typeparam>
+        /// <param name="eventObject">Event object</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
+        /// <returns>The asynchronous task whose result determines that the event is published</returns>
+        public virtual async Task PublishEventAsync<TEvent>(TEvent eventObject, CancellationToken cancellationToken)
         {
-            //get all event subscribers, excluding from not installed plugins
-            var subscribers = _subscriptionService.GetSubscriptions<T>()
-                .Where(subscriber => PluginManager.FindPlugin(subscriber.GetType())?.Installed ?? true).ToList();
+            //get all event consumers, excluding from not installed plugins
+            var eventConsumers = await _eventSubscriptionService.GetEventConsumersAsync<TEvent>(cancellationToken);
+            eventConsumers = eventConsumers.Where(consumer => PluginManager.FindPlugin(consumer.GetType())?.Installed ?? true).ToList();
 
-            //publish event to subscribers
-            subscribers.ForEach(subscriber => PublishToConsumer(subscriber, eventMessage));
+            //publish event to consumers
+            Task.WaitAll(eventConsumers.Select(consumer => PublishEventAsync(consumer, eventObject, cancellationToken)).ToArray(), cancellationToken);
         }
+
+        #endregion
     }
 }
