@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nop.Services.Themes
 {
@@ -11,27 +13,31 @@ namespace Nop.Services.Themes
         /// Get theme descriptor from the description text
         /// </summary>
         /// <param name="text">Description text</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Theme descriptor</returns>
-        ThemeDescriptor GetThemeDescriptorFromText(string text);
+        Task<ThemeDescriptor> GetThemeDescriptorFromTextAsync(string text, CancellationToken cancellationToken);
 
         /// <summary>
         /// Get all themes
         /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>List of the theme descriptor</returns>
-        IList<ThemeDescriptor> GetThemes();
+        Task<IList<ThemeDescriptor>> GetThemesAsync(CancellationToken cancellationToken);
 
         /// <summary>
         /// Get a theme by the system name
         /// </summary>
         /// <param name="systemName">Theme system name</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Theme descriptor</returns>
-        ThemeDescriptor GetThemeBySystemName(string systemName);
+        Task<ThemeDescriptor> GetThemeBySystemNameAsync(string systemName, CancellationToken cancellationToken);
 
         /// <summary>
         /// Check whether the theme with specified system name exists
         /// </summary>
         /// <param name="systemName">Theme system name</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>True if the theme exists; otherwise false</returns>
-        bool ThemeExists(string systemName);
+        Task<bool> ThemeExistsAsync(string systemName, CancellationToken cancellationToken);
     }
 }
