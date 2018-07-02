@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nop.Core.Domain.Customers;
 using Nop.Core.Plugins;
 using Nop.Services.Events;
@@ -35,16 +37,19 @@ namespace Nop.Services.Plugins
         /// <summary>
         /// Ensure plugins are loaded
         /// </summary>
-        protected virtual void EnsurePluginsAreLoaded()
+        protected virtual Task EnsurePluginsAreLoadedAsync(CancellationToken cancellationToken)
         {
-            if (!_arePluginsLoaded)
+            return Task.Run(() =>
             {
+                if (_arePluginsLoaded) 
+                    return;
+
                 var foundPlugins = PluginManager.ReferencedPlugins.ToList();
                 foundPlugins.Sort();
                 _plugins = foundPlugins.ToList();
 
                 _arePluginsLoaded = true;
-            }
+            }, cancellationToken);
         }
 
         /// <summary>
@@ -61,7 +66,7 @@ namespace Nop.Services.Plugins
             switch (loadMode)
             {
                 case LoadPluginsMode.All:
-                    //no filering
+                    //no filtering
                     return true;
                 case LoadPluginsMode.InstalledOnly:
                     return pluginDescriptor.Installed;
@@ -98,48 +103,57 @@ namespace Nop.Services.Plugins
         /// </summary>
         /// <param name="pluginDescriptor">Plugin descriptor to check</param>
         /// <param name="storeId">Store identifier to check</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>true - available; false - no</returns>
-        public virtual bool AuthenticateStore(PluginDescriptor pluginDescriptor, int storeId)
+        public virtual async Task<bool> AuthenticateStoreAsync(PluginDescriptor pluginDescriptor, int storeId, CancellationToken cancellationToken = default(CancellationToken))
         {
-            if (pluginDescriptor == null)
-                throw new ArgumentNullException(nameof(pluginDescriptor));
+            return await Task.Run(() =>
+            {
+                if (pluginDescriptor == null)
+                    throw new ArgumentNullException(nameof(pluginDescriptor));
 
-            //no validation required
-            if (storeId == 0)
-                return true;
+                //no validation required
+                if (storeId == 0)
+                    return true;
 
-            if (!pluginDescriptor.LimitedToStores.Any())
-                return true;
+                if (!pluginDescriptor.LimitedToStores.Any())
+                    return true;
 
-            return pluginDescriptor.LimitedToStores.Contains(storeId);
+                return pluginDescriptor.LimitedToStores.Contains(storeId);
+            }, cancellationToken);
         }
 
         /// <summary>
-        /// Check that plugin is available for the specified customer
+        /// Check that plugin is authorized for the specified customer
         /// </summary>
         /// <param name="pluginDescriptor">Plugin descriptor to check</param>
         /// <param name="customer">Customer</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>True if authorized; otherwise, false</returns>
-        public virtual bool AuthorizedForUser(PluginDescriptor pluginDescriptor, Customer customer)
+        public virtual async Task<bool> AuthorizedForUserAsync(PluginDescriptor pluginDescriptor, Customer customer, CancellationToken cancellationToken = default(CancellationToken))
         {
-            if (pluginDescriptor == null)
-                throw new ArgumentNullException(nameof(pluginDescriptor));
+            return await Task.Run(() =>
+            {
+                if (pluginDescriptor == null)
+                    throw new ArgumentNullException(nameof(pluginDescriptor));
 
-            if (customer == null || !pluginDescriptor.LimitedToCustomerRoles.Any())
-                return true;
+                if (customer == null || !pluginDescriptor.LimitedToCustomerRoles.Any())
+                    return true;
 
-            var customerRoleIds = customer.CustomerRoles.Where(role => role.Active).Select(role => role.Id);
+                var customerRoleIds = customer.CustomerRoles.Where(role => role.Active).Select(role => role.Id);
 
-            return pluginDescriptor.LimitedToCustomerRoles.Intersect(customerRoleIds).Any();
+                return pluginDescriptor.LimitedToCustomerRoles.Intersect(customerRoleIds).Any();
+            }, cancellationToken);
         }
 
         /// <summary>
         /// Gets plugin groups
         /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Plugins groups</returns>
-        public virtual IEnumerable<string> GetPluginGroups()
+        public virtual async Task<IEnumerable<string>> GetPluginGroupsAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
-            return GetPluginDescriptors(LoadPluginsMode.All).Select(x => x.Group).Distinct().OrderBy(x => x);
+            return (await GetPluginDescriptorsAsync(LoadPluginsMode.All, cancellationToken: cancellationToken)).Select(x => x.Group).Distinct().OrderBy(x => x);
         }
 
         /// <summary>
@@ -150,11 +164,14 @@ namespace Nop.Services.Plugins
         /// <param name="customer">Load records allowed only to a specified customer; pass null to ignore ACL permissions</param>
         /// <param name="storeId">Load records allowed only in a specified store; pass 0 to load all records</param>
         /// <param name="group">Filter by plugin group; pass null to load all records</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Plugins</returns>
-        public virtual IEnumerable<T> GetPlugins<T>(LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly,
-            Customer customer = null, int storeId = 0, string group = null) where T : class, IPlugin
+        public virtual async Task<IEnumerable<T>> GetPluginsAsync<T>(LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly,
+            Customer customer = null, int storeId = 0, string group = null, CancellationToken cancellationToken = default(CancellationToken)) where T : class, IPlugin
         {
-            return GetPluginDescriptors<T>(loadMode, customer, storeId, group).Select(p => p.Instance<T>());
+            var descriptors = await GetPluginDescriptorsAsync<T>(loadMode, customer, storeId, group, cancellationToken);
+
+            return await Task.Run(()=>descriptors.Select(p => p.InstanceAsync<T>(cancellationToken).Result), cancellationToken);
         }
 
         /// <summary>
@@ -164,15 +181,21 @@ namespace Nop.Services.Plugins
         /// <param name="customer">Load records allowed only to a specified customer; pass null to ignore ACL permissions</param>
         /// <param name="storeId">Load records allowed only in a specified store; pass 0 to load all records</param>
         /// <param name="group">Filter by plugin group; pass null to load all records</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Plugin descriptors</returns>
-        public virtual IEnumerable<PluginDescriptor> GetPluginDescriptors(LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly,
-            Customer customer = null, int storeId = 0, string group = null)
+        public virtual async Task<IEnumerable<PluginDescriptor>> GetPluginDescriptorsAsync(LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly,
+            Customer customer = null, int storeId = 0, string group = null, CancellationToken cancellationToken = default(CancellationToken))
         {
             //ensure plugins are loaded
-            EnsurePluginsAreLoaded();
+            await EnsurePluginsAreLoadedAsync(cancellationToken);
 
-            return _plugins.Where(p => CheckLoadMode(p, loadMode) && AuthorizedForUser(p, customer) && AuthenticateStore(p, storeId) && CheckGroup(p, group));
+            return await Task.Run(
+                () => _plugins.Where(p =>
+                    CheckLoadMode(p, loadMode) && AuthorizedForUserAsync(p, customer, cancellationToken).Result &&
+                    AuthenticateStoreAsync(p, storeId, cancellationToken).Result && CheckGroup(p, group)),
+                cancellationToken);
         }
+
 
         /// <summary>
         /// Get plugin descriptors
@@ -182,12 +205,13 @@ namespace Nop.Services.Plugins
         /// <param name="customer">Load records allowed only to a specified customer; pass null to ignore ACL permissions</param>
         /// <param name="storeId">Load records allowed only in a specified store; pass 0 to load all records</param>
         /// <param name="group">Filter by plugin group; pass null to load all records</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>Plugin descriptors</returns>
-        public virtual IEnumerable<PluginDescriptor> GetPluginDescriptors<T>(LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly,
-            Customer customer = null, int storeId = 0, string group = null) 
+        public virtual async Task<IEnumerable<PluginDescriptor>> GetPluginDescriptorsAsync<T>(LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly,
+            Customer customer = null, int storeId = 0, string group = null, CancellationToken cancellationToken = default(CancellationToken)) 
             where T : class, IPlugin
         {
-            return GetPluginDescriptors(loadMode, customer, storeId, group)
+            return (await GetPluginDescriptorsAsync(loadMode, customer, storeId, group, cancellationToken))
                 .Where(p => typeof(T).IsAssignableFrom(p.PluginType));
         }
 
@@ -196,10 +220,11 @@ namespace Nop.Services.Plugins
         /// </summary>
         /// <param name="systemName">Plugin system name</param>
         /// <param name="loadMode">Load plugins mode</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>>Plugin descriptor</returns>
-        public virtual PluginDescriptor GetPluginDescriptorBySystemName(string systemName, LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly)
+        public virtual async Task<PluginDescriptor> GetPluginDescriptorBySystemNameAsync(string systemName, LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly, CancellationToken cancellationToken = default(CancellationToken))
         {
-            return GetPluginDescriptors(loadMode)
+            return (await GetPluginDescriptorsAsync(loadMode, cancellationToken: cancellationToken))
                 .SingleOrDefault(p => p.SystemName.Equals(systemName, StringComparison.InvariantCultureIgnoreCase));
         }
 
@@ -209,25 +234,27 @@ namespace Nop.Services.Plugins
         /// <typeparam name="T">The type of plugin to get.</typeparam>
         /// <param name="systemName">Plugin system name</param>
         /// <param name="loadMode">Load plugins mode</param>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <returns>>Plugin descriptor</returns>
-        public virtual PluginDescriptor GetPluginDescriptorBySystemName<T>(string systemName, LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly)
+        public virtual async Task<PluginDescriptor> GetPluginDescriptorBySystemNameAsync<T>(string systemName, LoadPluginsMode loadMode = LoadPluginsMode.InstalledOnly, CancellationToken cancellationToken = default(CancellationToken))
             where T : class, IPlugin
         {
-            return GetPluginDescriptors<T>(loadMode)
+            return (await GetPluginDescriptorsAsync<T>(loadMode, cancellationToken: cancellationToken))
                 .SingleOrDefault(p => p.SystemName.Equals(systemName, StringComparison.InvariantCultureIgnoreCase));
         }
 
         /// <summary>
         /// Reload plugins after updating
         /// </summary>
+        /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete</param>
         /// <param name="pluginDescriptor">Updated plugin descriptor</param>
-        public virtual void ReloadPlugins(PluginDescriptor pluginDescriptor)
+        public virtual async Task ReloadPluginsAsync(PluginDescriptor pluginDescriptor, CancellationToken cancellationToken = default(CancellationToken))
         {
             _arePluginsLoaded = false;
-            EnsurePluginsAreLoaded();
+            await EnsurePluginsAreLoadedAsync(cancellationToken);
 
             //raise event
-            _eventPublisher.Publish(new PluginUpdatedEvent(pluginDescriptor));
+            await _eventPublisher.PublishEventAsync(new PluginUpdatedEvent(pluginDescriptor), cancellationToken);
         }
 
         #endregion
