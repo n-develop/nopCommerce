@@ -1892,6 +1892,9 @@ set @resources='
   <LocaleResource Name="Admin.Configuration.ActivityLog.ActivityLog.Fields.ActivityLogTypeColumn">
     <Value>Activity log type</Value>
   </LocaleResource>
+  <LocaleResource Name="Admin.Configuration.Currencies.AdditionalConfirm">
+    <Value><![CDATA[<p>WARNING. It is not recommended to it on line sites because: </p><ol><li>Product prices, order totals, shipping rates, etc are not automatically converted to the new currency</li><li>Currency exhange rates are not not automatically updated</li></ol>]]></Value>
+  </LocaleResource>
 </Language>
 '
 

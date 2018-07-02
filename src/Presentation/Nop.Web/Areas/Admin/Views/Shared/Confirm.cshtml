@@ -7,7 +7,19 @@
             <h4 class="modal-title" id="@(Model.WindowId)-title">@T("Admin.Common.AreYouSure")</h4>
         </div>
         <div class="modal-body">
-            @T("Admin.Common.ActionConfirmation")
+            @if (!string.IsNullOrEmpty(Model.AdditonalConfirmText))
+            {
+                <div class="additional-text">
+                    @T(Model.AdditonalConfirmText)
+                </div>
+                <div class="common-text">
+                    @T("Admin.Common.ActionConfirmation")
+                </div>
+            }
+            else
+            {
+                @T("Admin.Common.ActionConfirmation")
+            }
         </div>
         <div class="modal-footer">
             <button type="submit" id="@(Model.WindowId)-submit-button" class="btn btn-primary pull-right">

@@ -163,7 +163,7 @@
                             var selectedId;
 
                             $(document).ready(function () {
-                                                                
+
                                 $("#btnMarkPSC-action-confirmation-submit-button").bind("click", function () {
                                     var postData = {
                                         id: selectedId
@@ -181,7 +181,7 @@
                                         error: function (xhr, ajaxOptions, thrownError) {
                                             alert('Failed to update currency');
                                         }
-                                    });                                    
+                                    });
                                     $('#btnMarkPSC-action-confirmation').modal('toggle');
                                 });
 
@@ -202,7 +202,7 @@
                                         error: function (xhr, ajaxOptions, thrownError) {
                                             alert('Failed to update currency');
                                         }
-                                    });                                    
+                                    });
                                     $('#btnMarkPERC-action-confirmation').modal('toggle');
                                 });
 
@@ -215,11 +215,11 @@
 
                             function markAsPrimaryStoreCurrency(id) {
                                 selectedId = id;
-                                $("#btnMarkPSC").click();                                
+                                $("#btnMarkPSC").click();
                             };
-                           
+
                         </script>
-                        
+
                     </div>
                 </div>
                 @if (Model.ExchangeRateProviderModel.ExchangeRates?.Any() ?? false)
@@ -324,5 +324,5 @@
         </div>
     </div>
 </form>
-<nop-action-confirmation asp-button-id="btnMarkPERC" />
-<nop-action-confirmation asp-button-id="btnMarkPSC" />
+<nop-action-confirmation asp-button-id="btnMarkPERC" asp-additional-confirm="Admin.Configuration.Currencies.AdditionalConfirm" />
+<nop-action-confirmation asp-button-id="btnMarkPSC" asp-additional-confirm="Admin.Configuration.Currencies.AdditionalConfirm"/>
